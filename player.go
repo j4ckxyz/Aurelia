@@ -63,13 +63,24 @@ func newPlayer(app *App) *player {
 	if p.err == nil && !app.silent {
 		// The sound card opens while the window does.
 		go func() {
-			engine, err := audio.NewEngine(44100, func(ev audio.Event) {
+			// The output of the settings, when it is plugged in.
+			devs, _ := audio.Devices()
+			chosen := ""
+			for _, d := range devs {
+				if d.ID == app.settings.OutputDevice {
+					chosen = d.ID
+				}
+			}
+			engine, err := audio.NewEngine(44100, chosen, func(ev audio.Event) {
 				app.update(func() { p.onEvent(ev) })
 			})
 			app.update(func() {
 				p.engine, p.err = engine, err
 				if engine != nil {
+					app.output.devices, app.output.readAt = devs, time.Now()
+					app.output.on = chosen
 					engine.SetNormalize(app.settings.Normalize, app.settings.levelDB())
+					app.applyEffects()
 					p.applyVolume()
 				}
 			})

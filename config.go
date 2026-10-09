@@ -60,6 +60,18 @@ type Settings struct {
 	SidebarW      int  `json:"sidebarW,omitempty"`
 	// MiniPinned keeps the small window of the record above the others.
 	MiniPinned bool `json:"miniPinned,omitempty"`
+	// OutputDevice is the ID of the output to play on, "" for the
+	// system's default, and OutputName what it was called, for when it is
+	// not plugged in.
+	OutputDevice string `json:"outputDevice,omitempty"`
+	OutputName   string `json:"outputName,omitempty"`
+	// EQ is the equalizer, and EQPresets the presets the user saved.
+	EQ        EQSettings `json:"eq"`
+	EQPresets []EQPreset `json:"eqPresets,omitempty"`
+	// Mono plays both channels as one; Balance goes from -1, the left
+	// channel alone, to 1, the right.
+	Mono    bool    `json:"mono,omitempty"`
+	Balance float64 `json:"balance,omitempty"`
 	// OthersPlaylists shows the playlists other people of the server
 	// made public, among the user's own.
 	OthersPlaylists bool `json:"othersPlaylists,omitempty"`

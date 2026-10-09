@@ -11,7 +11,7 @@ import (
 // The icons are Lucide's (assets/icons/LICENSE); the logo is Aurelia's
 // own.
 //
-//go:embed assets/icons/*.svg assets/logo.svg
+//go:embed assets/icons/*.svg assets/icons/color/*.svg assets/logo.svg
 var iconFiles embed.FS
 
 var icons = map[string]*ui.SVG{}
@@ -36,5 +36,21 @@ func icon(name string) *ui.SVG {
 	}
 	s := ui.MustParseSVG(data)
 	icons[name] = s
+	return s
+}
+
+// colorIcon returns the picture of an icon in the colors of the thing it
+// shows, as the sidebar has them, or nil when it has none: they are drawn
+// after Lucide's shapes (assets/icons/color).
+func colorIcon(name string) *ui.SVG {
+	key := "color/" + name
+	if s, ok := icons[key]; ok {
+		return s
+	}
+	var s *ui.SVG
+	if data, err := iconFiles.ReadFile("assets/icons/" + key + ".svg"); err == nil {
+		s = ui.MustParseSVG(data)
+	}
+	icons[key] = s
 	return s
 }

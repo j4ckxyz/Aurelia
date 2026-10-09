@@ -16,7 +16,7 @@ Some are drawn filled, which the license allows.
 |---|---|
 | [github.com/egoist/mygo](https://github.com/egoist/mygo) | MIT |
 | [github.com/coder/websocket](https://github.com/coder/websocket) | ISC |
-| [github.com/ebitengine/oto/v3](https://github.com/ebitengine/oto) | Apache-2.0 |
+| [github.com/ebitengine/oto/v3](https://github.com/ebitengine/oto) | Apache-2.0, kept in `internal/oto` with changes: the choice of output device, and a list of them |
 | [github.com/ebitengine/purego](https://github.com/ebitengine/purego) | Apache-2.0 |
 | [github.com/hajimehoshi/go-mp3](https://github.com/hajimehoshi/go-mp3) | Apache-2.0 |
 | [github.com/icza/bitio](https://github.com/icza/bitio) | Apache-2.0 |

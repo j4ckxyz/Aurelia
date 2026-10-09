@@ -80,9 +80,10 @@ type App struct {
 	syncErr  string
 
 	// The seek bar while it is dragged, and a volume not saved yet.
-	scrubbing   bool
-	scrub       float64
-	volumeDirty bool
+	balanceDirty bool
+	scrubbing    bool
+	scrub        float64
+	volumeDirty  bool
 
 	// hiddenGen counts the albums taken out of "Jump back in".
 	hiddenGen int
@@ -94,6 +95,12 @@ type App struct {
 	sidebarDirty             bool
 	// stage is the full screen of the song playing.
 	stage stage
+	// settingsScroll is how far the settings are scrolled.
+	settingsScroll ui.ScrollState
+	// eq is the equalizer's page.
+	eq eqState
+	// output is the computer's outputs, to play on.
+	output outputState
 	// remote is the other devices of the user, to play on.
 	remote remote
 	// cursor is the marker the keys move over a page's items.

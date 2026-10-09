@@ -238,6 +238,9 @@ func (a *App) route(c *ui.Context, r *ui.Route) {
 	case r.Match("/lyrics"):
 		r.Title("Lyrics")
 		a.lyricsPage(c)
+	case r.Match("/equalizer"):
+		r.Title("Equalizer")
+		a.equalizerPage(c)
 	case r.Match("/settings"):
 		r.Title("Settings")
 		a.settingsPage(c)
@@ -506,7 +509,9 @@ func (a *App) navItem(c *ui.Context, glyph, label, path, under string) {
 		fg = p.text
 	}
 	b.Children(func() {
-		if glyph != "" {
+		if pic := colorIcon(glyph); pic != nil {
+			ui.Image(c, pic).Size(18, 18).Shrink(0)
+		} else if glyph != "" {
 			ig := fg
 			if active {
 				ig = p.accent

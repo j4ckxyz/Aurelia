@@ -233,7 +233,7 @@ func TestEngineOnTheDevice(t *testing.T) {
 	}
 	open := testFile(t, 4<<20)
 	events := make(chan Event, 8)
-	e, err := NewEngine(44100, func(ev Event) { events <- ev })
+	e, err := NewEngine(44100, "", func(ev Event) { events <- ev })
 	if err != nil {
 		t.Fatal(err)
 	}

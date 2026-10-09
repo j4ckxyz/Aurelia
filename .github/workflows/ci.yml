@@ -38,6 +38,21 @@ jobs:
         env:
           AURELIA_REQUIRE_DBUS: "1"
         run: dbus-run-session -- go test ./...
+      - name: Output devices, on a PulseAudio server
+        # Sound is played on one of two sinks that make no noise, moved to
+        # the other as it plays, and PulseAudio is asked where it is.
+        if: runner.os == 'Linux'
+        env:
+          AURELIA_REQUIRE_PULSE: "1"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pulseaudio pulseaudio-utils
+          pulseaudio --start --exit-idle-time=-1 || true
+          sleep 2
+          pactl load-module module-null-sink sink_name=aurelia_a sink_properties=device.description=Aurelia_A
+          pactl load-module module-null-sink sink_name=aurelia_b sink_properties=device.description=Aurelia_B
+          pactl list sinks short
+          go test ./internal/oto -run PulseDevices -v
       - name: The proxy's sandbox
         # It holds only in a build without cgo, as the proxy is built.
         if: runner.os == 'Linux'

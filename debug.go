@@ -187,6 +187,7 @@ func (a *App) debug(dir, line string) {
 				shown = u.Redacted() // not its password, in a log
 			}
 			out += fmt.Sprintf("proxy=%q %s %s\n", shown, a.connection.status, a.connection.err)
+			out += fmt.Sprintf("output: chosen=%q (%s) on=%q known=%d\n", a.settings.OutputDevice, a.settings.OutputName, a.output.on, len(a.output.devices))
 			out += "system: " + strings.Join(strings.Fields(a.system.describe()), " ") + " (told " + a.told + ")\n"
 		})
 		os.WriteFile(filepath.Join(dir, "state"), []byte(out), 0o644)
@@ -257,6 +258,57 @@ func (a *App) debug(dir, line string) {
 			default:
 				a.checkForUpdates(checkAsked)
 			}
+		})
+	case "output":
+		// "output list" writes the outputs to the file "outputs"; "output
+		// BlackHole" plays on the first whose name has that in it; "output"
+		// on the system's default.
+		do(func() {
+			if arg == "list" {
+				a.output.readAt = time.Time{}
+				a.readOutputs(a.settleOutput)
+				return
+			}
+			if arg == "" {
+				a.chooseOutput("", "")
+				return
+			}
+			for _, d := range a.output.devices {
+				if strings.Contains(strings.ToLower(d.Name), strings.ToLower(arg)) {
+					a.chooseOutput(d.ID, d.Name)
+					return
+				}
+			}
+			a.chooseOutput("gone-"+arg, arg) // one that is not plugged in
+		})
+	case "front":
+		// A covered window paints no frames, so a shot would show an old
+		// one: the window is brought forward.
+		do(func() { a.show() })
+		time.Sleep(400 * time.Millisecond)
+	case "settingsy":
+		// "settingsy 1200" scrolls the settings that far down.
+		y, _ := strconv.ParseFloat(arg, 64)
+		do(func() { a.settingsScroll.Y = float32(y) })
+	case "eq":
+		// "eq on", "eq off", "eq preset Rock" and "eq band 5 6" (the sixth
+		// band, +6 dB) set the equalizer.
+		do(func() {
+			f := strings.Fields(arg)
+			switch {
+			case len(f) == 0:
+			case f[0] == "on" || f[0] == "off":
+				a.settings.EQ.On = f[0] == "on"
+			case f[0] == "preset":
+				if pr, ok := a.settings.presetNamed(strings.TrimSpace(strings.TrimPrefix(arg, "preset"))); ok {
+					a.settings.EQ.Bands, a.settings.EQ.Preamp = pr.Bands, pr.Preamp
+				}
+			case f[0] == "band" && len(f) == 3:
+				i, _ := strconv.Atoi(f[1])
+				v, _ := strconv.ParseFloat(f[2], 64)
+				a.settings.EQ.Bands[i%10] = v
+			}
+			a.eqChanged()
 		})
 	case "restart":
 		do(func() { a.restart() })

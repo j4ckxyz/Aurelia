@@ -142,6 +142,7 @@ func (a *App) keepHouse() {
 			if a.player.playing() {
 				a.player.reportProgress(false)
 			}
+			a.watchOutput()
 			// What a device playing in this computer's place does.
 			if f := a.player.far; f != nil && time.Since(f.polledAt) >= farPoll {
 				a.pollFar()

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <radialGradient id="vinyl" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#2A2A31" />
+      <stop offset=".5" stop-color="#3B3B45" />
+      <stop offset=".78" stop-color="#26262D" />
+      <stop offset="1" stop-color="#4A4A56" />
+    </radialGradient>
+    <linearGradient id="label" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC06A" />
+      <stop offset="1" stop-color="#F0552B" />
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".5" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".12" />
+    </linearGradient>
+  </defs>
+  <circle cx="12" cy="12" r="10.5" fill="url(#vinyl)" />
+  <path d="M12 12 2.49 7.56A10.5 10.5 0 0 1 7.56 2.49z" fill="url(#sheen)" />
+  <path d="M12 12l9.51 4.44a10.5 10.5 0 0 1-5.07 5.07z" fill="url(#sheen)" />
+  <circle cx="12" cy="12" r="8.3" stroke="#000000" stroke-opacity=".35" stroke-width=".5" />
+  <circle cx="12" cy="12" r="6.3" stroke="#000000" stroke-opacity=".35" stroke-width=".5" />
+  <circle cx="12" cy="12" r="10.15" stroke="#FFFFFF" stroke-opacity=".28" stroke-width=".7" />
+  <circle cx="12" cy="12" r="4.1" fill="url(#label)" />
+  <circle cx="12" cy="12" r="4.1" stroke="#7A2410" stroke-opacity=".5" stroke-width=".5" />
+  <circle cx="12" cy="12" r="1" fill="#17171C" />
+</svg>

@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -81,7 +84,7 @@ func (a *App) settingsPage(c *ui.Context) {
 		a.themeGen++
 	}
 	a.measureCaches()
-	ui.Scroll(c.Key("settings")).Grow(1).MinHeight(0).Padding(0, 0, 40).Children(func() {
+	ui.Scroll(c.Key("settings")).TrackScroll(&a.settingsScroll).Grow(1).MinHeight(0).Padding(0, 0, 40).Children(func() {
 		a.pageTitle(c, "Settings", "", nil)
 		ui.Column(c).Padding(0, pagePad).Gap(10).MaxWidth(860).Children(func() {
 			a.settingsHead(c, "Appearance")
@@ -159,6 +162,64 @@ func (a *App) settingsPage(c *ui.Context) {
 								a.settings.MaxBitrate = qualityRates[i]
 							}
 						}
+						a.saveSettings()
+					}
+				})
+				if time.Since(a.output.readAt) > outputMaxAge {
+					a.readOutputs(a.settleOutput) // what is plugged in changes
+				}
+				a.setting(c, "Output device", a.outputHelp(), func() {
+					names, ids := []string{"System default"}, []string{""}
+					for _, d := range a.output.devices {
+						name := d.Name
+						for slices.Contains(names, name) {
+							name += " "
+						}
+						names, ids = append(names, name), append(ids, d.ID)
+					}
+					at := 0
+					switch {
+					case a.settings.OutputDevice == "":
+					case slices.Contains(ids, a.settings.OutputDevice):
+						at = slices.Index(ids, a.settings.OutputDevice)
+					default:
+						// Chosen, and not plugged in: it stays chosen.
+						names, ids = append(names, a.settings.OutputName+" (not connected)"), append(ids, a.settings.OutputDevice)
+						at = len(ids) - 1
+					}
+					pick := names[at]
+					if ui.Select(c.Key("output"), &pick, names).Width(260).Label("Output device").Changed() {
+						if i := slices.Index(names, pick); i >= 0 && ids[i] != a.settings.OutputDevice {
+							name := strings.TrimSpace(strings.TrimSuffix(names[i], " (not connected)"))
+							if ids[i] == "" {
+								name = ""
+							}
+							a.chooseOutput(ids[i], name)
+						}
+					}
+				})
+				a.setting(c, "Equalizer", eqSummary(&a.settings), func() {
+					if a.pillButton(c, "sliders-horizontal", "Open", false).Clicked() {
+						a.goTo("/equalizer")
+					}
+				})
+				a.setting(c, "Mono audio", "Play the left and right channels as one in both, as for listening with one earphone.", func() {
+					if ui.Switch(c.Key("mono"), &a.settings.Mono).Label("Mono audio").Changed() {
+						a.applyEffects()
+						a.saveSettings()
+					}
+				})
+				a.setting(c, "Balance", "Left or right: "+balanceText(a.settings.Balance)+".", func() {
+					s := ui.Slider(c.Key("balance"), &a.settings.Balance, -1, 1).Width(180).Step(0.05).Label("Balance")
+					if s.Changed() {
+						if math.Abs(a.settings.Balance) < 0.04 {
+							a.settings.Balance = 0 // the middle holds
+						}
+						a.applyEffects()
+						a.balanceDirty = true
+					}
+					if a.balanceDirty && !s.Pressed() {
+						a.balanceDirty = false
 						a.saveSettings()
 					}
 				})
@@ -452,4 +513,34 @@ func (a *App) importThemeFiles(paths []string) {
 	} else {
 		a.toast(fmt.Sprintf("Imported %d themes", n))
 	}
+}
+
+// eqSummary is the line under the equalizer's setting.
+func eqSummary(s *Settings) string {
+	if !s.EQ.On {
+		return "Off. Ten bands and a preamp, with presets."
+	}
+	return "On, with " + s.presetNow() + ". Ten bands and a preamp, with presets."
+}
+
+// balanceText says where the balance is.
+func balanceText(b float64) string {
+	switch {
+	case math.Abs(b) < 0.005:
+		return "in the middle"
+	case b < 0:
+		return fmt.Sprintf("%.0f%% to the left", -b*100)
+	}
+	return fmt.Sprintf("%.0f%% to the right", b*100)
+}
+
+// outputHelp is the line under the output device's setting.
+func (a *App) outputHelp() string {
+	switch {
+	case a.settings.OutputDevice == "":
+		return "Where the sound plays. The system's default follows the system's own choice."
+	case a.outputMissing():
+		return "Not plugged in. The system's default plays until it is."
+	}
+	return "Where the sound plays, kept between runs."
 }

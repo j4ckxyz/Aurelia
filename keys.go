@@ -121,6 +121,7 @@ func init() {
 			}},
 		{id: "sidebar", group: "Getting around", label: "Show or hide the sidebar", keys: []chord{{primary, ui.KeyB}}, menu: "View",
 			run: func(a *App) { a.toggleSidebar() }},
+		{id: "equalizer", group: "Getting around", label: "Equalizer", keys: []chord{{move, ui.KeyE}}, menu: "View", run: page("/equalizer")},
 		{id: "settings", group: "Getting around", label: "Settings", keys: []chord{{primary, ui.KeyComma}}, menu: "View", run: page("/settings")},
 		{id: "shortcuts", group: "Getting around", label: "Keyboard shortcuts", keys: []chord{{primary, ui.KeySlash}, {ui.Shift, ui.KeySlash}}, menu: "View", run: page("/shortcuts")},
 		{id: "sync", group: "Getting around", label: "Update the library", keys: []chord{{primary | ui.Shift, ui.KeyR}}, menu: "Library",

@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/ebitengine/oto/v3"
+	"aurelia/internal/oto"
 )
 
 // Track is something to play.
@@ -92,6 +92,9 @@ type Engine struct {
 	paused bool
 	ended  bool
 	volume float64
+	// fx is what is done to the sound as the device takes it, so that a
+	// change is heard at once and not after the sound decoded ahead.
+	fx chain
 }
 
 type loadReq struct {
@@ -129,17 +132,26 @@ func (s *source) close() {
 	}
 }
 
-// NewEngine opens the sound card at rate Hz. onEvent is called on a
-// goroutine of the engine's, one event at a time.
-func NewEngine(rate int, onEvent func(Event)) (*Engine, error) {
+// Device is an output that sound can be played on.
+type Device = oto.Device
+
+// Devices lists the outputs of the computer, the system's default marked.
+func Devices() ([]Device, error) { return oto.Devices() }
+
+// NewEngine opens the sound card at rate Hz, the output named deviceID or
+// the system's default for "". onEvent is called on a goroutine of the
+// engine's, one event at a time.
+func NewEngine(rate int, deviceID string, onEvent func(Event)) (*Engine, error) {
 	e := &Engine{rate: rate, onEvent: onEvent, events: make(chan Event, 16), volume: 1, paused: false}
 	e.cond = sync.NewCond(&e.mu)
+	e.fx.set(Effects{}, float64(rate))
 	e.ring = make([]float32, 2*ringFrames)
 	octx, ready, err := oto.NewContext(&oto.NewContextOptions{
 		SampleRate:      rate,
 		ChannelCount:    2,
 		Format:          oto.FormatFloat32LE,
 		ApplicationName: "Aurelia",
+		DeviceID:        deviceID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("audio: opening the sound card: %w", err)
@@ -176,6 +188,12 @@ func NewEngine(rate int, onEvent func(Event)) (*Engine, error) {
 		}
 	}()
 	return e, nil
+}
+
+// SetDevice moves the sound to the output named, "" being the system's
+// default. A song playing goes on there, after a moment of silence.
+func (e *Engine) SetDevice(deviceID string) error {
+	return e.octx.SetDevice(deviceID)
 }
 
 // Rate returns the rate of the device.
@@ -315,6 +333,13 @@ func (e *Engine) SetVolume(v float64) {
 	e.volume = v
 	e.mu.Unlock()
 	e.player.SetVolume(v * v * v)
+}
+
+// SetEffects sets the equalizer, the mono and the balance: heard at once.
+func (e *Engine) SetEffects(fx Effects) {
+	e.mu.Lock()
+	e.fx.set(fx, float64(e.rate))
+	e.mu.Unlock()
 }
 
 // SetNormalize turns on the gain of tracks, from the track decoded next;
@@ -461,6 +486,7 @@ func (e *Engine) read(p []byte) (int, error) {
 		seg.played += int64(k)
 		n += k
 	}
+	e.fx.process(out[:2*n])
 	e.cond.Broadcast()
 	e.mu.Unlock()
 	clear(out[2*n:])
