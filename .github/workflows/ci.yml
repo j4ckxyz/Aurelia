@@ -41,7 +41,9 @@ jobs:
       - name: What the system is told plays
         shell: bash
         env:
+          # Not skipped where the system has what they test.
           AURELIA_REQUIRE_DBUS: "1"
+          AURELIA_REQUIRE_SMTC: "1"
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
             dbus-run-session -- go test . -run 'MPRIS|SystemMediaControls|TypedEventHandler' -v

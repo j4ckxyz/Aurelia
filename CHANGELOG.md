@@ -1,5 +1,16 @@
 # Changes
 
+## 0.1.2
+
+- The album's cover shows with the song in the system's display of what
+  plays: Control Center and the lock screen on macOS, the media flyout
+  on Windows, and the desktop's media controls on Linux.
+- On Windows and Linux the system's media buttons, and the keyboard's
+  media keys, control Aurelia through the system, as on macOS.
+- The system and the server are told what plays while the window is
+  hidden or the screen is locked.
+- install.sh works in the sh of macOS.
+
 ## 0.1.1
 
 - Less memory: pictures that scroll away are not loaded, and a fast scroll

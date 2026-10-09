@@ -20,6 +20,7 @@ Some are drawn filled, which the license allows.
 | [github.com/hajimehoshi/go-mp3](https://github.com/hajimehoshi/go-mp3) | Apache-2.0 |
 | [github.com/icza/bitio](https://github.com/icza/bitio) | Apache-2.0 |
 | [github.com/icza/mighty](https://github.com/icza/mighty) | Apache-2.0 |
+| [github.com/godbus/dbus/v5](https://github.com/godbus/dbus) | BSD-2-Clause |
 | [github.com/jfreymuth/pulse](https://github.com/jfreymuth/pulse) | MIT |
 | [github.com/mewkiz/flac](https://github.com/mewkiz/flac) | Unlicense (public domain) |
 | [github.com/mewkiz/pkg](https://github.com/mewkiz/pkg) | Unlicense (public domain) |

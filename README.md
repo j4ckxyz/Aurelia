@@ -60,7 +60,8 @@ from a browser needs a right-click and Open the first time, or
 "More info ▸ Run anyway".
 
 Linux needs GTK 3, which desktops have, and PulseAudio, PipeWire's
-PulseAudio service, or ALSA for sound.
+PulseAudio service, or ALSA for sound. The Linux installer may say that
+WebKitGTK is missing: Aurelia shows no web page and does not need it.
 
 ### Updates
 
@@ -99,8 +100,11 @@ from the `.deb` is updated by installing a newer `.deb` instead.
   a picture not fetched yet shows as an icon until it is.
 - **The queue comes back.** Aurelia opens with the song it had, paused
   where it was.
-- **macOS knows what plays**: Control Center shows the song, and the
-  keyboard's and headphones' play, next and previous keys work.
+- **The system knows what plays**, with the album's cover: Control Center
+  and the lock screen on macOS, the media flyout and the lock screen on
+  Windows, and the desktop's media controls on Linux (MPRIS, as GNOME and
+  KDE read it). Their buttons, and the keyboard's and headphones' play,
+  next and previous keys, control Aurelia, with its window hidden too.
 - **Themes.** Fourteen built in, a theme editor that shows changes as you
   make them, and themes as JSON files you can write by hand. Themes made
   for Visual Studio Code, Firefox and Chrome import as they are.
@@ -210,9 +214,9 @@ number in `CHANGELOG.md`, pushed to `main`, is released by
 installers, and the updates that installed copies fetch, signed with the
 key in the repository's `MYGO_UPDATER_PRIVATE_KEY` secret. Installed apps
 take only updates signed with that key: keep a copy of it somewhere safe.
-The releases, the install commands and the updates need the repository to
-be public: nothing can fetch a private repository's releases without
-signing in.
+Three workflows check what a release is for on a real macOS, Windows and
+Linux: the tests, the install commands above against the latest release,
+and an installed copy replacing itself with a newer one.
 
 Some tests need more than the code: `JELLYFIN_URL` and the rest make the
 library's tests read a real server, `AURELIA_TEST_FLAC=song.flac` gives the
@@ -227,7 +231,7 @@ audio tests a file, and `AURELIA_TEST_DEVICE=1` plays it on the sound card.
 | `player.go` | the queue: order, shuffle, repeat, and what the server is told |
 | `downloads.go` | what is kept for offline |
 | `update.go` | the app's own updates |
-| `nowplaying_darwin.go` | what plays, told to macOS |
+| `nowplaying_darwin.go`, `nowplaying_linux.go`, `nowplaying_windows.go` | what plays, told to the system: Now Playing, MPRIS, and the System Media Transport Controls |
 | `images.go` | pictures: in memory, on disk, and from the server |
 | `internal/jellyfin` | the server's API |
 | `internal/library` | the library in memory and on disk, and its search |

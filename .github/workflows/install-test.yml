@@ -11,8 +11,6 @@ on:
       - install.sh
       - install.ps1
       - .github/workflows/install-test.yml
-  release:
-    types: [published]
 
 jobs:
   unix:
