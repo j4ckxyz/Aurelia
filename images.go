@@ -134,6 +134,19 @@ func (ic *imageCache) pin(key, url string) {
 	ic.mu.Unlock()
 }
 
+// file returns where the picture of key is on disk, for what shows
+// pictures outside the window, as the system's display of what plays. It
+// returns "" while the picture is fetched, which it starts.
+func (ic *imageCache) file(key, url string) string {
+	for _, path := range []string{ic.path(key), filepath.Join(ic.pinDir, key+".jpg")} {
+		if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+			return path
+		}
+	}
+	ic.warm(key, url)
+	return ""
+}
+
 // unpinAll forgets the pictures kept for good.
 func (ic *imageCache) unpinAll() {
 	des, _ := os.ReadDir(ic.pinDir)

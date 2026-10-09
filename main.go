@@ -104,15 +104,40 @@ func (a *App) open() {
 		dark := mygo.Theme.IsDark()
 		a.update(func() { a.systemDark = dark })
 	})
+	win.Update(a.drain) // what happened before there was a window
 	if !a.started {
 		a.started = true
 		a.start()
-		a.mediaKeys()
-		a.system.init(a)
 		a.startUpdates()
+		// What the system offers beyond the window is a courtesy: where
+		// it fails, the player still plays.
+		func() {
+			defer func() {
+				if err := recover(); err != nil {
+					log.Printf("telling the system what plays: %v\n%s", err, debug.Stack())
+				}
+			}()
+			a.system.init(a)
+			a.mediaKeys()
+		}()
+		go a.keepHouse()
 	}
-	win.Update(a.drain) // what happened before there was a window
 	a.debugHook()
+}
+
+// keepHouse does, every second, what must go on whether or not the
+// window draws: a window that is hidden, covered or behind a locked
+// screen builds no frames, and the music plays on. The system is told of
+// the song that began meanwhile, and the server of how far it is.
+func (a *App) keepHouse() {
+	for range time.Tick(time.Second) {
+		mygo.RunOnMain(func() {
+			a.tellSystem()
+			if a.player.playing() {
+				a.player.reportProgress(false)
+			}
+		})
+	}
 }
 
 // show brings the window back, or opens one.
@@ -141,8 +166,8 @@ func (a *App) rescale() {
 // mediaKeys makes the keyboard's play, next and previous keys work while
 // other apps are in front, where the system lets an app take them.
 func (a *App) mediaKeys() {
-	if runtime.GOOS == "darwin" {
-		return // macOS gives these keys to the app playing, not to shortcuts
+	if a.system.handlesKeys() {
+		return // the system sends them to the app playing, with what it shows of it
 	}
 	for key, fn := range map[string]func(){
 		"MediaPlayPause":     func() { a.player.toggle() },

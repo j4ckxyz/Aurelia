@@ -502,31 +502,59 @@ func (a *App) setFavorite(id string, fav *bool, on bool) {
 
 func seconds(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
 
+// playing is what the system is told plays.
+type playing struct {
+	title, artist, album string
+	duration, position   time.Duration
+	paused               bool
+	// art is the file of the song's picture, "" while it is not on disk;
+	// artURL is where the server has it.
+	art, artURL string
+	// id names the song, for systems that tell songs apart by it.
+	id string
+}
+
+// coverPixels is the size of the picture the system is given: large
+// enough for a lock screen.
+const coverPixels = 512
+
 // tellSystem keeps the system and the window's title telling what plays:
-// when the song changes, pauses or plays on, and when it moves otherwise
-// than a clock would move it, as a seek does.
+// when the song changes, pauses or plays on, when its picture arrives,
+// and when it moves otherwise than a clock would move it, as a seek does.
 func (a *App) tellSystem() {
 	s := a.player.current()
 	st := a.player.state()
+	var now playing
 	key := "nothing"
 	if s != nil {
-		key = fmt.Sprint(s.ID, st.Paused)
+		now = playing{title: s.Name, artist: s.Artist, album: s.Album, duration: st.Duration, position: st.Position, paused: st.Paused, id: s.ID}
+		if c := a.client; c != nil && s.ImageItem != "" && s.ImageTag != "" {
+			now.artURL = c.ImageURL(s.ImageItem, "Primary", s.ImageTag, coverPixels)
+			now.art = a.images.file(imageKey(s.ImageItem, s.ImageTag, coverPixels), now.artURL)
+		}
+		key = fmt.Sprint(s.ID, st.Paused, now.art != "", a.settings.Shuffle, a.settings.Repeat, int(a.settings.Volume*100))
 		expected := a.toldFrom
 		if !st.Paused {
 			expected += time.Since(a.toldAt)
 		}
 		if d := st.Position - expected; a.told == key && d > -2*time.Second && d < 2*time.Second {
+			a.system.progress(st.Position)
 			return
 		}
 	} else if a.told == key {
 		return
 	}
 	a.told, a.toldAt, a.toldFrom = key, time.Now(), st.Position
+	func() {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("telling the system what plays: %v\n%s", err, debug.Stack())
+			}
+		}()
+		a.system.set(now)
+	}()
 	title := "Aurelia"
-	if s == nil {
-		a.system.set("", "", "", 0, 0, true)
-	} else {
-		a.system.set(s.Name, s.Artist, s.Album, st.Duration.Seconds(), st.Position.Seconds(), st.Paused)
+	if s != nil {
 		title = s.Name + " — " + s.Artist
 	}
 	if a.win != nil && a.win.Title() != title {

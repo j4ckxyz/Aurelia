@@ -1,13 +1,19 @@
-//go:build !darwin
+//go:build !darwin && !linux && !windows
 
 package main
 
-// nowPlaying is macOS's: elsewhere the keyboard's media keys come as
-// global shortcuts (mediaKeys).
+import "time"
+
+// nowPlaying tells the system what plays, where Aurelia knows how: on
+// macOS, Linux and Windows.
 type nowPlaying struct{}
 
 func (n *nowPlaying) init(a *App) {}
 
-func (n *nowPlaying) set(title, artist, album string, duration, position float64, paused bool) {}
+func (n *nowPlaying) set(p playing) {}
+
+func (n *nowPlaying) progress(position time.Duration) {}
 
 func (n *nowPlaying) describe() string { return "" }
+
+func (n *nowPlaying) handlesKeys() bool { return false }

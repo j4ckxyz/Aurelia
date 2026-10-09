@@ -7,7 +7,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -16,11 +21,30 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Build for every platform, without cgo
+        if: runner.os == 'Linux'
         env:
           CGO_ENABLED: "0"
         run: |
-          GOOS=linux go build ./...
-          GOOS=windows go build ./...
-          GOOS=darwin go build ./...
+          GOOS=linux go vet . && GOOS=linux go build ./...
+          GOOS=windows go vet . && GOOS=windows go build ./...
+          GOOS=darwin go vet . && GOOS=darwin go build ./...
       - name: Test
+        if: runner.os != 'Linux'
         run: go test ./...
+      - name: Test, on a session bus
+        # What the desktop is told of the song playing goes over D-Bus:
+        # the test needs a bus to tell.
+        if: runner.os == 'Linux'
+        env:
+          AURELIA_REQUIRE_DBUS: "1"
+        run: dbus-run-session -- go test ./...
+      - name: What the system is told plays
+        shell: bash
+        env:
+          AURELIA_REQUIRE_DBUS: "1"
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            dbus-run-session -- go test . -run 'MPRIS|SystemMediaControls|TypedEventHandler' -v
+          else
+            go test . -run 'MPRIS|SystemMediaControls|TypedEventHandler' -v
+          fi
