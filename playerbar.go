@@ -92,6 +92,7 @@ func (a *App) playerBar(c *ui.Context) {
 
 		// The queue, the lyrics and the volume.
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Justify(ui.End).Gap(4).Children(func() {
+			a.deviceButton(c)
 			lyrics := a.router.Path() == "/lyrics"
 			if a.toggleIcon(c, "mic-vocal", "Lyrics", lyrics, 32, 16).Clicked() {
 				if lyrics {
@@ -226,8 +227,9 @@ func (a *App) seekBar(c *ui.Context, song *library.Song, st audio.State) {
 // volume is the volume's button, which mutes, and its slider.
 func (a *App) volume(c *ui.Context) {
 	p := a.pal
-	v := a.settings.Volume
-	if a.settings.Muted {
+	far := a.player.far
+	v, muted := a.volumeNow()
+	if muted {
 		v = 0
 	}
 	glyph := "volume-2"
@@ -238,19 +240,21 @@ func (a *App) volume(c *ui.Context) {
 		glyph = "volume-1"
 	}
 	label := "Mute"
-	if a.settings.Muted {
+	if muted {
 		label = "Unmute"
 	}
 	if a.iconButton(c, glyph, label, 32, 16).Clicked() {
-		a.settings.Muted = !a.settings.Muted
-		a.player.applyVolume()
-		a.saveSettings()
+		a.toggleMute()
 	}
 	bar := ui.SliderBase(c.Key("volume"), &v, 0, 1).Width(96).Height(16).Label("Volume").Shrink(0)
 	if bar.Changed() {
-		a.settings.Volume, a.settings.Muted = v, false
-		a.player.applyVolume()
-		a.volumeDirty = true
+		if far != nil {
+			a.farVolume(v)
+		} else {
+			a.settings.Volume, a.settings.Muted = v, false
+			a.player.applyVolume()
+			a.volumeDirty = true
+		}
 	}
 	if a.volumeDirty && !bar.Pressed() {
 		// Saved when let go, not for every pixel on the way.

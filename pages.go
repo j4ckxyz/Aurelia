@@ -756,6 +756,27 @@ func plain(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// fetchPlaylist asks the server for the songs of a playlist, in its
+// order, unless it told already.
+func (a *App) fetchPlaylist(id string, then func([]*library.Song)) {
+	a.fetch("playlist:"+id, func(ctx context.Context) ([]*library.Song, error) {
+		items, err := a.clientNow().PlaylistItems(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		var songs []*library.Song
+		for i := range items {
+			if items[i].Type != "Audio" {
+				continue // playlists may hold videos too
+			}
+			s := library.SongOf(&items[i])
+			library.PrepareSong(&s)
+			songs = append(songs, &s)
+		}
+		return songs, nil
+	}, then)
+}
+
 // playlists returns the playlists to show: the user's own, and those
 // others made public when the settings ask for them.
 func (a *App) playlists() []*library.Playlist {
@@ -805,22 +826,7 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 	}
 	r.Title(pl.Name)
 	key := "playlist:" + id
-	a.fetch(key, func(ctx context.Context) ([]*library.Song, error) {
-		items, err := a.clientNow().PlaylistItems(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		var songs []*library.Song
-		for i := range items {
-			if items[i].Type != "Audio" {
-				continue // playlists may hold videos too
-			}
-			s := library.SongOf(&items[i])
-			library.PrepareSong(&s)
-			songs = append(songs, &s)
-		}
-		return songs, nil
-	}, nil)
+	a.fetchPlaylist(id, nil)
 	fetched, done := a.pages.fetched[key]
 	if saved := a.downloads.playlists[id]; saved != nil && !done && (a.offline || a.pages.fetchErr[key] != "") {
 		// The server is away: the playlist as it was downloaded.

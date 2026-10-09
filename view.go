@@ -98,9 +98,14 @@ func (a *App) view(c *ui.Context) {
 				a.queuePanel(c)
 			}
 		})
+		a.farStrip(c)
 		a.playerBar(c)
 	})
-	a.toastLayer(c, playerH+14)
+	bottom := float32(playerH + 14)
+	if a.player.far != nil {
+		bottom += farStripH
+	}
+	a.toastLayer(c, bottom)
 }
 
 // sections are the parts of the library the sidebar leads to: the page
@@ -243,6 +248,10 @@ func (a *App) goTo(path string) {
 }
 
 func (a *App) setVolume(v float64) {
+	if a.player.far != nil {
+		a.farVolume(max(0, min(1, v)))
+		return
+	}
 	a.settings.Volume = max(0, min(1, v))
 	a.settings.Muted = false
 	a.player.applyVolume()

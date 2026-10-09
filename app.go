@@ -79,6 +79,8 @@ type App struct {
 	scrub       float64
 	volumeDirty bool
 
+	// remote is the other devices of the user, to play on.
+	remote remote
 	// cursor is the marker the keys move over a page's items.
 	cursor cursor
 	// lastIn is the page each section of the sidebar was left at.
@@ -157,6 +159,7 @@ func (a *App) setClient(c *jellyfin.Client) {
 	a.mu.Lock()
 	a.client = c
 	a.mu.Unlock()
+	a.listen() // for the orders of other devices, as this session
 }
 
 func (a *App) saveSettings() {
@@ -201,6 +204,7 @@ func (a *App) start() {
 	switch {
 	case a.settings.Session != nil:
 		a.openLibrary()
+		a.listen() // for the orders of other devices
 		// And again now and then, for what is added while the app runs.
 		go func() {
 			for range time.Tick(30 * time.Minute) {
@@ -437,8 +441,8 @@ func (a *App) pinArt(id, tag string) {
 // saveQueue keeps the queue for the next run.
 func (a *App) saveQueue() {
 	sess := a.settings.Session
-	if sess == nil {
-		return
+	if sess == nil || a.player.far != nil {
+		return // another device's queue is its own
 	}
 	p := a.player
 	q := savedQueue{Server: sess.ServerID + "/" + sess.UserID, Index: p.index, Position: p.state().Position.Seconds()}

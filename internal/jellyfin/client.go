@@ -556,17 +556,46 @@ type Playback struct {
 	Paused   bool
 	// SessionID names one play of a song, from its start to its stop.
 	SessionID string
+	// What a device that controls this one shows: the volume from 0 to
+	// 100, the order, and the songs around the one playing, with its
+	// place among them. Queue is told when it is given.
+	Volume  int
+	Muted   bool
+	Repeat  string // RepeatNone, RepeatAll or RepeatOne
+	Shuffle bool
+	Queue   []string
+	Index   int
 }
 
 func (p Playback) body() map[string]any {
-	return map[string]any{
+	b := map[string]any{
 		"ItemId":        p.SongID,
 		"PositionTicks": int64(p.Position / 100),
 		"IsPaused":      p.Paused,
+		"IsMuted":       p.Muted,
+		"VolumeLevel":   p.Volume,
 		"PlaySessionId": p.SessionID,
 		"PlayMethod":    "DirectPlay",
 		"CanSeek":       true,
 	}
+	if p.Repeat != "" {
+		b["RepeatMode"] = p.Repeat
+	}
+	if p.Shuffle {
+		b["PlaybackOrder"] = "Shuffle"
+	} else {
+		b["PlaybackOrder"] = "Default"
+	}
+	if len(p.Queue) > 0 {
+		// Each song of the queue has a name of its own in it: its place.
+		queue := make([]map[string]string, len(p.Queue))
+		for i, id := range p.Queue {
+			queue[i] = map[string]string{"Id": id, "PlaylistItemId": "aurelia" + strconv.Itoa(i)}
+		}
+		b["NowPlayingQueue"] = queue
+		b["PlaylistItemId"] = "aurelia" + strconv.Itoa(p.Index)
+	}
+	return b
 }
 
 // ReportStart tells the server a song began.

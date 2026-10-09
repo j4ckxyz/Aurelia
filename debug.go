@@ -137,6 +137,19 @@ func (a *App) debug(dir, line string) {
 				offered = u.available.Version
 			}
 			out += fmt.Sprintf("version=%s update: checking=%v installing=%v ready=%q upToDate=%v err=%q offered=%q signedIn=%v\n", appVersion(), u.checking, u.installing, u.ready, u.upToDate, u.err, offered, a.signedIn())
+			on := "this computer"
+			if f := a.player.far; f != nil {
+				on = fmt.Sprintf("%q volume=%d muted=%v", f.dev.Title(), f.volume, f.muted)
+			}
+			out += fmt.Sprintf("plays on: %s; volume here=%.2f muted=%v shuffle=%v repeat=%d; devices:", on, a.settings.Volume, a.settings.Muted, a.settings.Shuffle, a.settings.Repeat)
+			for _, dev := range a.remote.devices {
+				what := "nothing"
+				if dev.Playing != nil {
+					what = fmt.Sprintf("%q at %v paused=%v queue=%d", dev.Playing.Item.Name, dev.Playing.Position.Round(time.Second), dev.Playing.Paused, len(dev.Playing.Queue))
+				}
+				out += fmt.Sprintf(" [%s device=%.6s plays %s]", dev.Title(), dev.DeviceID, what)
+			}
+			out += "\n"
 			shown := a.settings.Proxy
 			if u, _, err := parseProxy(shown); err == nil && u != nil {
 				shown = u.Redacted() // not its password, in a log
@@ -162,6 +175,24 @@ func (a *App) debug(dir, line string) {
 			time.Sleep(9 * time.Millisecond)
 		}
 		log.Printf("scroll %s ends", name)
+	case "devices":
+		// "devices" asks the server for the devices to play on.
+		do(func() { a.remote.fetchedAt = time.Time{}; a.refreshDevices() })
+	case "playon":
+		// "playon Aurelia" plays on the first device whose name has that
+		// in it; "playon" comes back to this computer.
+		do(func() {
+			if arg == "" {
+				a.playHere(true)
+				return
+			}
+			for _, dev := range a.remote.devices {
+				if strings.Contains(strings.ToLower(dev.Title()+" "+dev.DeviceID), strings.ToLower(arg)) {
+					a.playOn(dev)
+					return
+				}
+			}
+		})
 	case "do":
 		// "do next" runs a command of the keyboard by its name.
 		do(func() {

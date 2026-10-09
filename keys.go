@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"aurelia/internal/jellyfin"
 )
 
 // chord is a key with the modifiers held.
@@ -47,11 +50,7 @@ var commands = []command{
 	{id: "quieter", group: "Playback", label: "Volume down", keys: []chord{{primary, ui.KeyDown}}, menu: "Playback",
 		run: func(a *App) { a.setVolume(a.settings.Volume - 0.05) }},
 	{id: "mute", group: "Playback", label: "Mute", keys: []chord{{primary | ui.Shift, ui.KeyDown}, {0, ui.KeyM}}, menu: "Playback",
-		run: func(a *App) {
-			a.settings.Muted = !a.settings.Muted
-			a.player.applyVolume()
-			a.saveSettings()
-		}},
+		run: func(a *App) { a.toggleMute() }},
 	{id: "loudest", group: "Playback", label: "Full volume", keys: []chord{{primary | ui.Shift, ui.KeyUp}},
 		run: func(a *App) { a.setVolume(1) }},
 	{id: "shuffle", group: "Playback", label: "Shuffle", keys: []chord{{primary, ui.KeyS}}, menu: "Playback",
@@ -423,4 +422,19 @@ func (a *App) shortcutsPage(c *ui.Context) {
 		}
 		flush()
 	})
+}
+
+// toggleMute mutes what plays, here or on the device that plays, or
+// lets it sound again.
+func (a *App) toggleMute() {
+	if f := a.player.far; f != nil {
+		f.muted = !f.muted
+		a.send("mute", func(ctx context.Context, c *jellyfin.Client) error {
+			return c.Command(ctx, f.dev.ID, "ToggleMute", nil)
+		})
+		return
+	}
+	a.settings.Muted = !a.settings.Muted
+	a.player.applyVolume()
+	a.saveSettings()
 }
