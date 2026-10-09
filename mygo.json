@@ -1,7 +1,7 @@
 {
   "name": "Aurelia",
   "identifier": "dev.aurelia.app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "copyright": "A native Jellyfin music player, built with MyGo",
   "out": "build",
   "macos": {

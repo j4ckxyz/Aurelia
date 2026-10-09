@@ -16,8 +16,9 @@ import (
 	"time"
 )
 
-// Version is sent to the server as the client's.
-const Version = "0.1.0"
+// Version is sent to the server as the client's; the app sets it to its
+// own.
+var Version = "0.1.1"
 
 // Session is a signed-in user on a server, which the app keeps between
 // runs. It holds a token, never the password.

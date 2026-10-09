@@ -28,7 +28,8 @@ type updates struct {
 	started    bool
 }
 
-// appVersion is the version of the app running.
+// appVersion is the version of the app running: the released app's, or
+// the one the code names for a build that was not packaged.
 func appVersion() string {
 	if v := mygo.App.Version(); v != "" {
 		return v

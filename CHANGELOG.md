@@ -1,5 +1,15 @@
 # Changes
 
+## 0.1.1
+
+- Less memory: pictures that scroll away are not loaded, and a fast scroll
+  through the library no longer takes hundreds of megabytes for a moment.
+- Pictures load over connections that stay open, which matters on servers
+  without HTTP/2.
+- Songs and albums are put in order when the library is read, so their
+  pages open at once the first time too.
+- Aurelia no longer stops when it cannot make its cache directory.
+
 ## 0.1.0
 
 The first version of Aurelia.

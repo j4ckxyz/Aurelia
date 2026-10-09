@@ -36,6 +36,7 @@ func main() {
 	if single && !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
+	jellyfin.Version = appVersion()
 	a := newApp(appDirs(), false)
 	if single {
 		mygo.App.OnSecondInstance(func([]string, string) { a.show() })
