@@ -341,6 +341,13 @@ Each entry is written as:
       device and files: after the fade the next song reports a position of
       4.6 s, as its first four seconds were already heard, and goes on from
       there.
+**Released as 0.3.0 (tag `v0.3.0`, commit `1e9d23a`, 2026-10-09)**: every
+entry below shipped in it, except where an entry says otherwise. The release
+was checked end to end: CI, the update test and the install test passed on
+macOS, Windows and Linux; and the real 0.2.0 app, downloaded from the
+release, updated itself to 0.3.0 from the published release (`--self-update`,
+signature checked): "updated: 0.2.0 -> 0.3.0".
+
 - [x] **An equalizer** (2026-10-09): ten bands from 31 Hz to 16 kHz and a
       preamp, 14 presets and presets of your own (saved, named, deleted),
       one switch, kept between runs, with a curve drawn over the sliders.
