@@ -131,6 +131,8 @@ func (a *App) debug(dir, line string) {
 				name, st.Position.Round(time.Millisecond), st.Duration.Round(time.Second), st.Paused, st.Buffering, st.Loaded, len(a.player.queue),
 				len(a.images.mem), a.images.memBytes, m.HeapAlloc, m.Sys)
 			out += fmt.Sprintf("downloads: %d songs asked, %d here, %d to go, %d failed, offline=%v\n", len(a.downloads.songs), len(a.downloads.done), len(a.downloads.order)+len(a.downloads.active), len(a.downloads.failed), a.offline)
+			u := &a.updates
+			out += fmt.Sprintf("version=%s update: checking=%v installing=%v ready=%q upToDate=%v err=%q\n", appVersion(), u.checking, u.installing, u.ready, u.upToDate, u.err)
 			out += "system: " + strings.Join(strings.Fields(a.system.describe()), " ") + "\n"
 		})
 		os.WriteFile(filepath.Join(dir, "state"), []byte(out), 0o644)
@@ -151,6 +153,10 @@ func (a *App) debug(dir, line string) {
 			time.Sleep(9 * time.Millisecond)
 		}
 		log.Printf("scroll %s ends", name)
+	case "update":
+		do(func() { a.checkForUpdates(true) })
+	case "restart":
+		do(func() { a.restart() })
 	case "heap":
 		// A profile of what the heap holds, for go tool pprof.
 		runtime.GC()

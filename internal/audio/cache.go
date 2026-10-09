@@ -22,7 +22,8 @@ import (
 var ErrAborted = errors.New("audio: aborted")
 
 // Cache keeps the files of tracks on disk, downloading each once. A file
-// can be read while it downloads: reads wait for the bytes they need.
+// can be read while it downloads: reads wait for the bytes they need. A
+// nil Cache holds nothing, and opens nothing.
 type Cache struct {
 	dir    string
 	client *http.Client
@@ -52,6 +53,9 @@ func NewCache(dir string, maxBytes int64, client *http.Client) (*Cache, error) {
 
 // SetMaxBytes changes the size the cache is kept under.
 func (c *Cache) SetMaxBytes(n int64) {
+	if c == nil {
+		return
+	}
 	c.mu.Lock()
 	c.maxBytes = n
 	c.mu.Unlock()
@@ -81,6 +85,9 @@ type entry struct {
 // that newRequest makes unless the cache has it. It never blocks on the
 // network: reads do.
 func (c *Cache) Open(key string, newRequest func(ctx context.Context) (*http.Request, error)) (*File, error) {
+	if c == nil {
+		return nil, errors.New("audio: there is nowhere to keep songs")
+	}
 	key = safeKey(key)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -121,6 +128,9 @@ func (c *Cache) Open(key string, newRequest func(ctx context.Context) (*http.Req
 
 // Has reports whether the cache holds the whole file of key.
 func (c *Cache) Has(key string) bool {
+	if c == nil {
+		return false
+	}
 	key = safeKey(key)
 	c.mu.Lock()
 	e := c.entries[key]
@@ -299,6 +309,9 @@ func (c *Cache) evict() {
 
 // Size returns the bytes the cache holds on disk.
 func (c *Cache) Size() int64 {
+	if c == nil {
+		return 0
+	}
 	des, _ := os.ReadDir(c.dir)
 	var total int64
 	for _, de := range des {
@@ -311,6 +324,9 @@ func (c *Cache) Size() int64 {
 
 // Clear removes every file that is not open.
 func (c *Cache) Clear() {
+	if c == nil {
+		return
+	}
 	des, _ := os.ReadDir(c.dir)
 	for _, de := range des {
 		if !strings.HasSuffix(de.Name(), ".audio") {
@@ -483,6 +499,9 @@ func (f *File) Wait() error {
 // Path returns where the whole file of key is, "" when the cache does not
 // hold it.
 func (c *Cache) Path(key string) string {
+	if c == nil {
+		return ""
+	}
 	key = safeKey(key)
 	if !c.Has(key) {
 		return ""
@@ -492,6 +511,9 @@ func (c *Cache) Path(key string) string {
 
 // Keys returns the keys of the whole files the cache holds.
 func (c *Cache) Keys() []string {
+	if c == nil {
+		return nil
+	}
 	des, _ := os.ReadDir(c.dir)
 	var keys []string
 	for _, de := range des {
