@@ -1,0 +1,483 @@
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	mrand "math/rand/v2"
+	"net/http"
+	"slices"
+	"time"
+
+	"aurelia/internal/audio"
+	"aurelia/internal/jellyfin"
+	"aurelia/internal/library"
+)
+
+// player is the queue: the songs to play, which one plays, and in what
+// order. It drives the audio engine and tells the server what plays. Its
+// methods run on the interface's goroutine.
+type player struct {
+	app    *App
+	engine *audio.Engine
+	cache  *audio.Cache
+	err    error // why there is no sound, if the device did not open
+
+	// queue is the songs in the order they play; unshuffled is the order
+	// they were given in, while shuffled.
+	queue      []*library.Song
+	unshuffled []*library.Song
+	index      int // of the song playing in queue, -1 for none
+	finished   bool
+
+	track     *audio.Track // of the song playing
+	next      *audio.Track // what the engine plays after it
+	nextIndex int
+	failures  int
+
+	// What the server was told.
+	session  string
+	reported time.Time
+	reports  chan func(ctx context.Context, c *jellyfin.Client)
+}
+
+func newPlayer(app *App) *player {
+	p := &player{app: app, index: -1, nextIndex: -1, reports: make(chan func(context.Context, *jellyfin.Client), 32)}
+	client := &http.Client{} // no timeout: a song downloads as long as it takes
+	p.cache, p.err = audio.NewCache(app.dirs.audio(), int64(app.settings.AudioCacheMB)<<20, client)
+	if p.err == nil && !app.silent {
+		// The sound card opens while the window does.
+		go func() {
+			engine, err := audio.NewEngine(44100, func(ev audio.Event) {
+				app.update(func() { p.onEvent(ev) })
+			})
+			app.update(func() {
+				p.engine, p.err = engine, err
+				if engine != nil {
+					engine.SetNormalize(app.settings.Normalize)
+					p.applyVolume()
+				}
+			})
+		}()
+	}
+	// One at a time and in order: a stop never overtakes its start.
+	go func() {
+		for fn := range p.reports {
+			if c := app.clientNow(); c != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				fn(ctx, c)
+				cancel()
+			}
+		}
+	}()
+	return p
+}
+
+func (p *player) applyVolume() {
+	if p.engine == nil {
+		return
+	}
+	v := p.app.settings.Volume
+	if p.app.settings.Muted {
+		v = 0
+	}
+	p.engine.SetVolume(v)
+}
+
+// current returns the song playing, or nil.
+func (p *player) current() *library.Song {
+	if p.index < 0 || p.index >= len(p.queue) {
+		return nil
+	}
+	return p.queue[p.index]
+}
+
+// state returns what the engine does with the song playing.
+func (p *player) state() audio.State {
+	if p.engine == nil || p.current() == nil {
+		return audio.State{Paused: true}
+	}
+	st := p.engine.State()
+	if p.finished {
+		st.Paused = true
+	}
+	if st.Duration == 0 {
+		st.Duration = p.current().Duration()
+	}
+	return st
+}
+
+// playing reports whether sound comes, or is about to.
+func (p *player) playing() bool {
+	return p.current() != nil && !p.finished && p.engine != nil && !p.engine.State().Paused
+}
+
+func (p *player) trackOf(s *library.Song) *audio.Track {
+	app := p.app
+	quality := jellyfin.Quality{MaxBitrate: app.settings.MaxBitrate * 1000}
+	id := s.ID
+	return &audio.Track{
+		ID: id, Duration: s.Duration(), GainDB: s.GainDB,
+		Open: func() (*audio.File, error) {
+			return p.cache.Open(id+"-"+quality.Key(), func(ctx context.Context) (*http.Request, error) {
+				c := app.clientNow()
+				if c == nil {
+					return nil, jellyfin.ErrUnauthorized
+				}
+				return c.StreamRequest(ctx, id, quality)
+			})
+		},
+	}
+}
+
+// play plays songs from the one at start, in their order or shuffled
+// after it.
+func (p *player) play(songs []*library.Song, start int) {
+	if len(songs) == 0 {
+		return
+	}
+	start = max(0, min(start, len(songs)-1))
+	p.unshuffled = slices.Clone(songs)
+	p.queue = slices.Clone(songs)
+	if p.app.settings.Shuffle {
+		p.queue[0], p.queue[start] = p.queue[start], p.queue[0]
+		shuffle(p.queue[1:])
+		start = 0
+	}
+	p.failures = 0
+	p.playIndex(start)
+}
+
+// playShuffled plays songs in a random order, whatever the setting.
+func (p *player) playShuffled(songs []*library.Song) {
+	if len(songs) == 0 {
+		return
+	}
+	p.app.settings.Shuffle = true
+	p.app.saveSettings()
+	p.unshuffled = slices.Clone(songs)
+	p.queue = slices.Clone(songs)
+	shuffle(p.queue)
+	p.failures = 0
+	p.playIndex(0)
+}
+
+func shuffle(s []*library.Song) {
+	mrand.Shuffle(len(s), func(i, j int) { s[i], s[j] = s[j], s[i] })
+}
+
+// playIndex plays the song at i of the queue, from its start.
+func (p *player) playIndex(i int) {
+	if i < 0 || i >= len(p.queue) {
+		return
+	}
+	p.reportStop()
+	p.index, p.finished = i, false
+	song := p.queue[i]
+	p.track = p.trackOf(song)
+	p.next, p.nextIndex = nil, -1
+	if p.engine == nil {
+		if p.err != nil {
+			p.app.toastError("No sound", p.err)
+		}
+		return
+	}
+	p.engine.Resume()
+	p.engine.Play(p.track, 0)
+	p.reportStart()
+	p.armNext()
+}
+
+// following returns the index of the song after the one playing, -1 at
+// the end of the queue.
+func (p *player) following() int {
+	switch {
+	case len(p.queue) == 0 || p.index < 0:
+		return -1
+	case p.app.settings.Repeat == repeatOne:
+		return p.index
+	case p.index+1 < len(p.queue):
+		return p.index + 1
+	case p.app.settings.Repeat == repeatAll:
+		return 0
+	}
+	return -1
+}
+
+// armNext tells the engine what to play where the song ends, which makes
+// it download ahead and play on without a gap.
+func (p *player) armNext() {
+	if p.engine == nil {
+		return
+	}
+	i := p.following()
+	if i < 0 {
+		p.next, p.nextIndex = nil, -1
+		p.engine.SetNext(nil)
+		return
+	}
+	if p.next != nil && p.nextIndex == i && p.next.ID == p.queue[i].ID {
+		return
+	}
+	p.next, p.nextIndex = p.trackOf(p.queue[i]), i
+	p.engine.SetNext(p.next)
+}
+
+func (p *player) onEvent(ev audio.Event) {
+	switch ev.Kind {
+	case audio.TrackChanged:
+		// The engine went on to the song it was given.
+		if p.next == nil || ev.TrackID != p.next.ID {
+			return
+		}
+		p.countPlay()
+		p.reportStopAt(p.current(), p.current().Duration())
+		p.index, p.track = p.nextIndex, p.next
+		p.next, p.nextIndex = nil, -1
+		p.failures = 0
+		p.reportStart()
+		p.armNext()
+	case audio.Ended:
+		if cur := p.current(); cur == nil || ev.TrackID != cur.ID {
+			return
+		}
+		p.countPlay()
+		p.reportStopAt(p.current(), p.current().Duration())
+		p.finished = true
+	case audio.Failed:
+		cur := p.current()
+		if cur == nil || ev.TrackID != cur.ID {
+			return
+		}
+		p.app.toastError("Could not play "+cur.Name, ev.Err)
+		// One song that fails is skipped; several in a row is the
+		// server or the network, and skipping on helps nobody.
+		p.failures++
+		if next := p.following(); next >= 0 && next != p.index && p.failures < 3 {
+			p.playIndex(next)
+		} else {
+			p.engine.Stop()
+			p.finished = true
+		}
+	}
+}
+
+// countPlay notes a song heard to its end, as the server does.
+func (p *player) countPlay() {
+	if s := p.current(); s != nil {
+		s.Plays++
+		s.LastPlayed = time.Now().Unix()
+		p.app.favGen++
+	}
+}
+
+// toggle pauses, or plays on.
+func (p *player) toggle() {
+	if p.engine == nil || p.current() == nil {
+		return
+	}
+	if p.finished {
+		// The queue ended: play it again.
+		p.playIndex(0)
+		return
+	}
+	if p.engine.State().Paused {
+		p.engine.Resume()
+	} else {
+		p.engine.Pause()
+	}
+	p.reportProgress(true)
+}
+
+// skip goes to the next song.
+func (p *player) skip() {
+	if p.index < 0 {
+		return
+	}
+	switch {
+	case p.index+1 < len(p.queue):
+		p.failures = 0
+		p.playIndex(p.index + 1)
+	case p.app.settings.Repeat != repeatOff && len(p.queue) > 0:
+		p.failures = 0
+		p.playIndex(0)
+	}
+}
+
+// previous goes to the start of the song, or to the song before it when
+// it has barely begun.
+func (p *player) previous() {
+	if p.index < 0 {
+		return
+	}
+	if p.state().Position > 3*time.Second || p.index == 0 {
+		p.seek(0)
+		return
+	}
+	p.failures = 0
+	p.playIndex(p.index - 1)
+}
+
+func (p *player) seek(to time.Duration) {
+	if p.engine == nil || p.current() == nil {
+		return
+	}
+	if p.finished {
+		p.finished = false
+		p.engine.Play(p.track, to)
+		p.reportStart()
+		p.armNext()
+		return
+	}
+	p.engine.SeekTo(to)
+	p.armNext()
+	p.reportProgress(true)
+}
+
+func (p *player) setShuffle(on bool) {
+	p.app.settings.Shuffle = on
+	p.app.saveSettings()
+	cur := p.current()
+	if cur == nil {
+		return
+	}
+	if on {
+		p.queue = slices.Clone(p.unshuffled)
+		i := slices.Index(p.queue, cur)
+		if i < 0 {
+			i = 0
+		}
+		p.queue[0], p.queue[i] = p.queue[i], p.queue[0]
+		shuffle(p.queue[1:])
+		p.index = 0
+	} else {
+		p.queue = slices.Clone(p.unshuffled)
+		p.index = max(slices.Index(p.queue, cur), 0)
+	}
+	p.next, p.nextIndex = nil, -1
+	p.armNext()
+}
+
+func (p *player) cycleRepeat() {
+	p.app.settings.Repeat = (p.app.settings.Repeat + 1) % 3
+	p.app.saveSettings()
+	p.next, p.nextIndex = nil, -1
+	p.armNext()
+}
+
+// playNext puts songs right after the one playing.
+func (p *player) playNext(songs []*library.Song) {
+	if len(songs) == 0 {
+		return
+	}
+	if p.current() == nil {
+		p.play(songs, 0)
+		return
+	}
+	p.queue = slices.Insert(p.queue, p.index+1, songs...)
+	p.unshuffled = append(p.unshuffled, songs...)
+	p.next, p.nextIndex = nil, -1
+	p.armNext()
+}
+
+// enqueue puts songs at the end of the queue.
+func (p *player) enqueue(songs []*library.Song) {
+	if len(songs) == 0 {
+		return
+	}
+	if p.current() == nil {
+		p.play(songs, 0)
+		return
+	}
+	p.queue = append(p.queue, songs...)
+	p.unshuffled = append(p.unshuffled, songs...)
+	p.armNext()
+}
+
+// remove takes the song at i out of the queue.
+func (p *player) remove(i int) {
+	if i < 0 || i >= len(p.queue) || i == p.index {
+		return
+	}
+	s := p.queue[i]
+	p.queue = slices.Delete(p.queue, i, i+1)
+	if j := slices.Index(p.unshuffled, s); j >= 0 {
+		p.unshuffled = slices.Delete(p.unshuffled, j, j+1)
+	}
+	if i < p.index {
+		p.index--
+	}
+	p.next, p.nextIndex = nil, -1
+	p.armNext()
+}
+
+// clearUpcoming empties the queue after the song playing.
+func (p *player) clearUpcoming() {
+	if p.index < 0 {
+		return
+	}
+	p.queue = p.queue[:p.index+1]
+	p.unshuffled = slices.Clone(p.queue)
+	p.armNext()
+}
+
+// stop ends everything, as signing out does.
+func (p *player) stop() {
+	p.reportStop()
+	if p.engine != nil {
+		p.engine.Stop()
+	}
+	p.queue, p.unshuffled, p.index, p.finished = nil, nil, -1, false
+	p.track, p.next, p.nextIndex = nil, nil, -1
+}
+
+func (p *player) report(fn func(ctx context.Context, c *jellyfin.Client)) {
+	select {
+	case p.reports <- fn:
+	default: // the server is not answering: what plays matters more
+	}
+}
+
+func (p *player) reportStart() {
+	s := p.current()
+	if s == nil {
+		return
+	}
+	var b [8]byte
+	rand.Read(b[:])
+	p.session = hex.EncodeToString(b[:])
+	p.reported = time.Now()
+	pb := jellyfin.Playback{SongID: s.ID, SessionID: p.session}
+	p.report(func(ctx context.Context, c *jellyfin.Client) { c.ReportStart(ctx, pb) })
+}
+
+// reportProgress tells the server where the song is: now, or when it was
+// last told ten seconds ago.
+func (p *player) reportProgress(now bool) {
+	s := p.current()
+	if s == nil || p.session == "" || p.finished {
+		return
+	}
+	if !now && time.Since(p.reported) < 10*time.Second {
+		return
+	}
+	p.reported = time.Now()
+	st := p.state()
+	pb := jellyfin.Playback{SongID: s.ID, SessionID: p.session, Position: st.Position, Paused: st.Paused}
+	p.report(func(ctx context.Context, c *jellyfin.Client) { c.ReportProgress(ctx, pb) })
+}
+
+func (p *player) reportStop() {
+	if s := p.current(); s != nil && !p.finished {
+		p.reportStopAt(s, p.state().Position)
+	}
+}
+
+func (p *player) reportStopAt(s *library.Song, at time.Duration) {
+	if s == nil || p.session == "" {
+		return
+	}
+	pb := jellyfin.Playback{SongID: s.ID, SessionID: p.session, Position: at}
+	p.session = ""
+	p.report(func(ctx context.Context, c *jellyfin.Client) { c.ReportStop(ctx, pb) })
+}

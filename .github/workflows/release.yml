@@ -1,0 +1,73 @@
+# Builds the apps of every platform and attaches them to a release.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# or run it by hand from the Actions tab, which keeps the builds as the
+# run's artifacts without making a release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # the release, and the uploads to it
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # MyGo needs no cgo, so Ubuntu builds Windows' apps too; the
+          # disk images of macOS need a Mac.
+          - { name: macOS, os: macos-latest, platform: "darwin/arm64,darwin/amd64" }
+          - { name: Windows, os: ubuntu-latest, platform: "windows/amd64,windows/arm64" }
+          - { name: Linux, os: ubuntu-latest, platform: "linux/amd64,linux/arm64" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install NSIS, for the Windows installers
+        if: matrix.name == 'Windows'
+        run: sudo apt-get update && sudo apt-get install -y nsis
+      - name: Build
+        run: go tool mygo build -platform "${{ matrix.platform }}"
+      - name: Collect what to publish
+        shell: bash
+        run: |
+          mkdir dist
+          for dir in build/*/; do
+            target=$(basename "$dir") # as darwin-arm64
+            for f in "$dir"*.dmg "$dir"*.exe "$dir"*.deb "$dir"*.tar.gz; do
+              [ -f "$f" ] || continue
+              name=$(basename "$f")
+              case "$name" in
+                *amd64*|*arm64*|*x64*|*x86_64*|*aarch64*) ;; # names its platform already
+                *) name="${name%.*}-$target.${name##*.}" ;;
+              esac
+              cp "$f" "dist/${name// /-}"
+            done
+          done
+          ls -la dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Aurelia-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # Another platform's job may make it at the same moment.
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "Aurelia ${GITHUB_REF_NAME#v}" --generate-notes || true
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber

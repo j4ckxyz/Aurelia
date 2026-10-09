@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Build for every platform, without cgo
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          GOOS=linux go build ./...
+          GOOS=windows go build ./...
+          GOOS=darwin go build ./...
+      - name: Test
+        run: go test ./...

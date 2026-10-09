@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Sunset Dunes",
+  "version": "1.0",
+  "theme": {
+    "colors": {
+      "frame": "rgb(54, 32, 44)",
+      "tab_background_text": "rgb(250, 235, 225)",
+      "toolbar": "rgba(74, 44, 58, 1)",
+      "toolbar_text": "#faebe1",
+      "toolbar_field": "hsl(332, 25%, 16%)",
+      "toolbar_field_text": "#faebe1",
+      "tab_line": "#ff9f5a",
+      "popup": "#4a2c3a",
+      "popup_text": "#faebe1",
+      "sidebar": "#2d1a25",
+      "sidebar_highlight": "rgba(255, 159, 90, 0.3)"
+    }
+  }
+}

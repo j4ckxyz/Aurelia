@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Paper",
+  "version": "2",
+  "theme": {
+    "colors": {
+      "frame": [222, 225, 230],
+      "toolbar": [255, 255, 255],
+      "tab_text": [32, 33, 36],
+      "bookmark_text": [32, 33, 36],
+      "ntp_background": [250, 250, 248],
+      "ntp_text": [32, 33, 36],
+      "ntp_link": [26, 115, 232],
+      "omnibox_background": [241, 243, 244],
+      "button_background": [255, 255, 255, 0.5]
+    },
+    "tints": { "buttons": [0.6, 0.5, 0.4] }
+  }
+}

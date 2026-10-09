@@ -1,0 +1,25 @@
+// A color theme as Visual Studio Code extensions ship them: JSON with
+// comments and trailing commas, and translucent colors.
+{
+	"name": "Night Owlish",
+	"type": "dark",
+	"colors": {
+		"editor.background": "#011627",
+		"editor.foreground": "#d6deeb",
+		"sideBar.background": "#010e1a", // darker than the editor
+		"titleBar.activeBackground": "#010e1a",
+		"input.background": "#0b253a",
+		"list.hoverBackground": "#7e57c233",
+		"list.activeSelectionBackground": "#234d708c",
+		"panel.border": "#5f7e97",
+		"descriptionForeground": "#d6deebb3",
+		"button.background": "#7e57c2",
+		"button.foreground": "#ffffff",
+		"errorForeground": "#ef5350",
+		/* block comments too */
+		"focusBorder": "#122d42",
+	},
+	"tokenColors": [
+		{ "scope": "comment", "settings": { "foreground": "#637777", "fontStyle": "italic" } },
+	],
+}
