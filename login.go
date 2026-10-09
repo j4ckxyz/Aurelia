@@ -26,7 +26,7 @@ func (a *App) loginPage(c *ui.Context) {
 			ui.Column(c).Width(360).Gap(14).AlignItems(ui.Stretch).Children(func() {
 				ui.Column(c).AlignItems(ui.Center).Gap(8).Margin(0, 0, 10).Children(func() {
 					ui.Box(c).Size(64, 64).Radius(18).Center().Background(p.accent).Children(func() {
-						ui.Icon(c, icon("audio-lines")).Size(32, 32).TextColor(p.onAcc)
+						ui.Icon(c, icon("logo")).Size(38, 38).TextColor(p.onAcc)
 					})
 					ui.Text(c, "Aurelia").FontSize(26).FontWeight(800).Margin(10, 0, 0)
 					ui.Text(c, "Sign in to your Jellyfin server").TextColor(p.muted)

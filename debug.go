@@ -121,6 +121,7 @@ func (a *App) debug(dir, line string) {
 				a.router.Location(), len(a.lib.Albums), len(a.lib.Artists), len(a.lib.Songs), len(a.lib.Playlists), a.syncing, a.syncErr,
 				name, st.Position.Round(time.Millisecond), st.Duration.Round(time.Second), st.Paused, st.Buffering, st.Loaded, len(a.player.queue),
 				len(a.images.mem), a.images.memBytes, m.HeapAlloc, m.Sys)
+			out += "system: " + strings.Join(strings.Fields(a.system.describe()), " ") + "\n"
 		})
 		os.WriteFile(filepath.Join(dir, "state"), []byte(out), 0o644)
 	case "scroll":

@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -27,8 +30,9 @@ type App struct {
 	router   *ui.Router
 	scale    float64 // device pixels per point, for the size of pictures
 	// silent keeps the sound card closed, as tests of the view do.
-	silent  bool
-	started bool
+	silent   bool
+	started  bool
+	quitting bool
 
 	themes *theme.Store
 	// systemDark is the system's appearance, which "Match system"
@@ -41,6 +45,11 @@ type App struct {
 
 	images *imageCache
 	player *player
+	// system is what the system was last told plays, and when.
+	system   nowPlaying
+	told     string
+	toldAt   time.Time
+	toldFrom time.Duration
 
 	// client is read by other goroutines through clientNow.
 	mu     sync.Mutex
@@ -68,6 +77,10 @@ type App struct {
 	lyrics  lyricsState
 	details map[string]*detail // what the server tells of artists, by ID
 
+	queueMu       sync.Mutex     // one writer of the queue's file at a time
+	queueWrites   sync.WaitGroup // the writes not done yet
+	queueRestored bool
+
 	// pending are the functions of update waiting for a frame, where no
 	// window runs them.
 	pendingMu sync.Mutex
@@ -77,6 +90,7 @@ type App struct {
 func newApp(d dirs, silent bool) *App {
 	a := &App{dirs: d, settings: loadSettings(d), router: ui.NewRouter("/home"), scale: 2, details: map[string]*detail{}, silent: silent}
 	a.router.Transition = ui.TransitionNone // pages show at once
+	a.pages.queueChosen = -1
 	a.themes = theme.NewStore(d.themes())
 	a.lib = library.Empty()
 	a.images = newImageCache(d.images(), 18<<20, a.update)
@@ -167,6 +181,12 @@ func (a *App) start() {
 	switch {
 	case a.settings.Session != nil:
 		a.openLibrary()
+		// And again now and then, for what is added while the app runs.
+		go func() {
+			for range time.Tick(30 * time.Minute) {
+				a.update(a.sync)
+			}
+		}()
 	case os.Getenv("JELLYFIN_URL") != "" && os.Getenv("JELLYFIN_USERNAME") != "":
 		// Signing in from the environment, as development does.
 		a.login.server, a.login.user, a.login.password = os.Getenv("JELLYFIN_URL"), os.Getenv("JELLYFIN_USERNAME"), os.Getenv("JELLYFIN_PASSWORD")
@@ -314,6 +334,7 @@ func (a *App) sync() {
 func (a *App) setLibrary(l *library.Library) {
 	a.lib = l
 	a.libGen++
+	a.restoreQueue()
 	// The queue's songs are those of the library before: the same songs
 	// of the new one take their place, so that a favorite set on one
 	// shows on the other.
@@ -348,6 +369,75 @@ func (a *App) warmImages() {
 	}
 }
 
+// saveQueue keeps the queue for the next run.
+func (a *App) saveQueue() {
+	sess := a.settings.Session
+	if sess == nil {
+		return
+	}
+	p := a.player
+	q := savedQueue{Server: sess.ServerID + "/" + sess.UserID, Index: p.index, Position: p.state().Position.Seconds()}
+	// A queue of a whole library is kept from the song playing on.
+	const limit = 2000
+	start := 0
+	if len(p.queue) > limit {
+		start = max(0, min(p.index-10, len(p.queue)-limit))
+	}
+	for _, s := range p.queue[start:min(len(p.queue), start+limit)] {
+		q.Songs = append(q.Songs, s.ID)
+	}
+	q.Index -= start
+	if p.current() == nil {
+		q = savedQueue{}
+	}
+	b, err := json.Marshal(q)
+	if err != nil {
+		return
+	}
+	file := a.dirs.queueFile()
+	a.queueWrites.Add(1)
+	go func() {
+		defer a.queueWrites.Done()
+		a.queueMu.Lock()
+		defer a.queueMu.Unlock()
+		os.MkdirAll(filepath.Dir(file), 0o755)
+		if os.WriteFile(file+".tmp", b, 0o600) == nil {
+			os.Rename(file+".tmp", file)
+		}
+	}()
+}
+
+// restoreQueue brings back the queue of the last run, once the library
+// that holds its songs shows.
+func (a *App) restoreQueue() {
+	sess := a.settings.Session
+	if a.queueRestored || sess == nil || len(a.lib.Songs) == 0 {
+		return
+	}
+	a.queueRestored = true
+	b, err := os.ReadFile(a.dirs.queueFile())
+	if err != nil {
+		return
+	}
+	var q savedQueue
+	if json.Unmarshal(b, &q) != nil || q.Server != sess.ServerID+"/"+sess.UserID {
+		return
+	}
+	var songs []*library.Song
+	index := 0
+	for i, id := range q.Songs {
+		s := a.lib.Song(id)
+		if s == nil {
+			continue // gone from the library
+		}
+		if i == q.Index {
+			index = len(songs)
+		}
+		songs = append(songs, s)
+	}
+	a.player.restore(songs, index, seconds(q.Position))
+}
+
 // setFavorite marks a song, an album or an artist, here at once and on
 // the server.
 func (a *App) setFavorite(id string, fav *bool, on bool) {
@@ -368,6 +458,40 @@ func (a *App) setFavorite(id string, fav *bool, on bool) {
 			})
 		}
 	}()
+}
+
+func seconds(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
+
+// tellSystem keeps the system and the window's title telling what plays:
+// when the song changes, pauses or plays on, and when it moves otherwise
+// than a clock would move it, as a seek does.
+func (a *App) tellSystem() {
+	s := a.player.current()
+	st := a.player.state()
+	key := "nothing"
+	if s != nil {
+		key = fmt.Sprint(s.ID, st.Paused)
+		expected := a.toldFrom
+		if !st.Paused {
+			expected += time.Since(a.toldAt)
+		}
+		if d := st.Position - expected; a.told == key && d > -2*time.Second && d < 2*time.Second {
+			return
+		}
+	} else if a.told == key {
+		return
+	}
+	a.told, a.toldAt, a.toldFrom = key, time.Now(), st.Position
+	title := "Aurelia"
+	if s == nil {
+		a.system.set("", "", "", 0, 0, true)
+	} else {
+		a.system.set(s.Name, s.Artist, s.Album, st.Duration.Seconds(), st.Position.Seconds(), st.Paused)
+		title = s.Name + " — " + s.Artist
+	}
+	if a.win != nil && a.win.Title() != title {
+		a.win.SetTitle(title)
+	}
 }
 
 // theme returns the theme to show: the one being edited, the one chosen,

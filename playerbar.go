@@ -298,33 +298,48 @@ func (a *App) queuePanel(c *ui.Context) {
 			a.emptyState(c, "list-end", "Nothing is playing", "Songs you play line up here.")
 			return
 		}
-		// The song playing, a title, then the songs after it.
-		start := pl.index
+		// The song playing, then the songs after it, which drag to
+		// another place.
+		label := func(text string, top float32) {
+			ui.Text(c, text).FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(top, 18, 6).Shrink(0)
+		}
+		label("NOW PLAYING", 6)
+		ui.Box(c).Shrink(0).Children(func() { a.queueRow(c.Key("current"), pl.current(), pl.index) })
+		start := pl.index + 1
 		n := len(pl.queue) - start
+		if n <= 0 {
+			return
+		}
+		label("NEXT UP", 16)
 		remove := -1
-		ui.List(c.Key("queue"), nil, n+2, func(i int) {
-			switch i {
-			case 0:
-				ui.Text(c, "NOW PLAYING").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(6, 18, 6)
-				return
-			case 2:
-				ui.Text(c, "NEXT UP").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(16, 18, 6)
-				return
+		state := &a.pages.queueList
+		state.Reorder = func(rows []int, to int) {
+			from := make([]int, len(rows))
+			for i, r := range rows {
+				from[i] = start + r
 			}
-			at := start
-			if i > 2 {
-				at = start + i - 2
-			}
-			if at >= len(pl.queue) {
-				return
-			}
-			s := pl.queue[at]
-			if a.queueRow(c.Key(at), s, at) {
+			pl.move(from, start+to)
+		}
+		// A click chooses a song and a double click plays it: the list
+		// tells, so that its rows stay free to be dragged.
+		chosen := &a.pages.queueChosen
+		if *chosen >= n {
+			*chosen = -1
+		}
+		state.Selected = chosen
+		list := ui.List(c.Key("queue"), state, n, func(i int) {
+			if at := start + i; at < len(pl.queue) && a.queueRow(c.Key(at), pl.queue[at], at) {
 				remove = at
 			}
 		}).Grow(1).MinHeight(0).Padding(0, 0, 12)
-		if remove >= 0 {
+		switch {
+		case remove >= 0:
 			pl.remove(remove)
+			*chosen = -1
+		case list.Submitted() && *chosen >= 0:
+			pl.failures = 0
+			pl.playIndex(start + *chosen)
+			*chosen = -1
 		}
 	})
 }
@@ -357,10 +372,6 @@ func (a *App) queueRow(c *ui.Context, s *library.Song, at int) (removed bool) {
 			ui.Text(c, clock(s.Duration())).FontSize(12).TextColor(p.muted).FontFeatures("tnum").Shrink(0)
 		}
 	})
-	if row.DoubleClicked() && !current {
-		pl.failures = 0
-		pl.playIndex(at)
-	}
 	row.ContextMenu(func(m *ui.Menu) {
 		if !current && m.Item("Play").Chosen() {
 			pl.playIndex(at)

@@ -22,10 +22,11 @@ type pageStates struct {
 	songs, titles sorted[*library.Song]
 	rows          map[string]*rowList
 	// The places of the long lists, which stay as other pages show.
-	albumList, artistsList, songList ui.ListState
-	fetched                          map[string][]*library.Song // songs asked of the server, by album or playlist
-	fetching                         map[string]bool
-	fetchErr                         map[string]string
+	albumList, artistsList, songList, queueList ui.ListState
+	queueChosen                                 int
+	fetched                                     map[string][]*library.Song // songs asked of the server, by album or playlist
+	fetching                                    map[string]bool
+	fetchErr                                    map[string]string
 }
 
 // sorted is a list in an order, with what it was made for.

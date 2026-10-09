@@ -8,9 +8,10 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// The icons are Lucide's (assets/icons/LICENSE).
+// The icons are Lucide's (assets/icons/LICENSE); the logo is Aurelia's
+// own.
 //
-//go:embed assets/icons/*.svg
+//go:embed assets/icons/*.svg assets/logo.svg
 var iconFiles embed.FS
 
 var icons = map[string]*ui.SVG{}
@@ -22,7 +23,11 @@ func icon(name string) *ui.SVG {
 		return s
 	}
 	file, fill := strings.CutSuffix(name, "-fill")
-	data, err := iconFiles.ReadFile("assets/icons/" + file + ".svg")
+	path := "assets/icons/" + file + ".svg"
+	if file == "logo" {
+		path = "assets/logo.svg"
+	}
+	data, err := iconFiles.ReadFile(path)
 	if err != nil {
 		panic("no icon named " + name)
 	}

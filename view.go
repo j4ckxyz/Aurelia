@@ -43,7 +43,11 @@ func (a *App) frame(c *ui.Context) {
 		a.pal, a.palFor = newPalette(t), key
 	}
 	c.SetTheme(a.pal.widgets)
-	c.Root().Background(a.pal.bg).TextColor(a.pal.text)
+	root := c.Root().Background(a.pal.bg).TextColor(a.pal.text)
+	// Theme files dropped on the window are imported.
+	if files := root.DroppedFiles(); len(files) > 0 {
+		a.importThemeFiles(files)
+	}
 	for _, t := range toasts {
 		c.AddToast(t)
 	}
@@ -60,6 +64,7 @@ func (a *App) view(c *ui.Context) {
 		return
 	}
 	a.shortcuts(c)
+	a.tellSystem()
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.sidebar(c)
@@ -262,7 +267,7 @@ func (a *App) sidebar(c *ui.Context) {
 	ui.Column(c).Width(sidebarW).Shrink(0).Background(p.sidebar).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
 		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 12, 0, max(bar.Left+4, 12)).Gap(2).DragWindow().Children(func() {
 			if bar.Left == 0 {
-				ui.Icon(c, icon("audio-lines")).Size(18, 18).TextColor(p.accent)
+				ui.Icon(c, icon("logo")).Size(20, 20).TextColor(p.accent)
 				ui.Text(c, "Aurelia").FontWeight(700).FontSize(15).Margin(0, 0, 0, 8)
 			}
 			ui.Spacer(c)

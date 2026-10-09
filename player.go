@@ -29,6 +29,11 @@ type player struct {
 	unshuffled []*library.Song
 	index      int // of the song playing in queue, -1 for none
 	finished   bool
+	paused     bool
+	// cold is a queue brought back from the last run: its song loads
+	// when it is first played, from resumeAt.
+	cold     bool
+	resumeAt time.Duration
 
 	track     *audio.Track // of the song playing
 	next      *audio.Track // what the engine plays after it
@@ -94,22 +99,27 @@ func (p *player) current() *library.Song {
 
 // state returns what the engine does with the song playing.
 func (p *player) state() audio.State {
-	if p.engine == nil || p.current() == nil {
+	song := p.current()
+	if song == nil {
 		return audio.State{Paused: true}
 	}
-	st := p.engine.State()
-	if p.finished {
-		st.Paused = true
+	st := audio.State{}
+	switch {
+	case p.cold:
+		st.Position = p.resumeAt
+	case p.engine != nil:
+		st = p.engine.State()
 	}
+	st.Paused = p.paused || p.finished
 	if st.Duration == 0 {
-		st.Duration = p.current().Duration()
+		st.Duration = song.Duration()
 	}
 	return st
 }
 
 // playing reports whether sound comes, or is about to.
 func (p *player) playing() bool {
-	return p.current() != nil && !p.finished && p.engine != nil && !p.engine.State().Paused
+	return p.current() != nil && !p.finished && !p.paused
 }
 
 func (p *player) trackOf(s *library.Song) *audio.Track {
@@ -172,7 +182,7 @@ func (p *player) playIndex(i int) {
 		return
 	}
 	p.reportStop()
-	p.index, p.finished = i, false
+	p.index, p.finished, p.paused, p.cold = i, false, false, false
 	song := p.queue[i]
 	p.track = p.trackOf(song)
 	p.next, p.nextIndex = nil, -1
@@ -186,6 +196,7 @@ func (p *player) playIndex(i int) {
 	p.engine.Play(p.track, 0)
 	p.reportStart()
 	p.armNext()
+	p.app.saveQueue()
 }
 
 // following returns the index of the song after the one playing, -1 at
@@ -237,6 +248,7 @@ func (p *player) onEvent(ev audio.Event) {
 		p.failures = 0
 		p.reportStart()
 		p.armNext()
+		p.app.saveQueue()
 	case audio.Ended:
 		if cur := p.current(); cur == nil || ev.TrackID != cur.ID {
 			return
@@ -273,7 +285,7 @@ func (p *player) countPlay() {
 
 // toggle pauses, or plays on.
 func (p *player) toggle() {
-	if p.engine == nil || p.current() == nil {
+	if p.current() == nil {
 		return
 	}
 	if p.finished {
@@ -281,10 +293,29 @@ func (p *player) toggle() {
 		p.playIndex(0)
 		return
 	}
-	if p.engine.State().Paused {
+	if p.cold {
+		// The queue of the last run: its song loads now, where it was.
+		if p.engine == nil {
+			if p.err != nil {
+				p.app.toastError("No sound", p.err)
+			}
+			return
+		}
+		p.cold, p.paused = false, false
+		p.track = p.trackOf(p.current())
 		p.engine.Resume()
-	} else {
-		p.engine.Pause()
+		p.engine.Play(p.track, p.resumeAt)
+		p.reportStart()
+		p.armNext()
+		return
+	}
+	p.paused = !p.paused
+	if p.engine != nil {
+		if p.paused {
+			p.engine.Pause()
+		} else {
+			p.engine.Resume()
+		}
 	}
 	p.reportProgress(true)
 }
@@ -319,11 +350,19 @@ func (p *player) previous() {
 }
 
 func (p *player) seek(to time.Duration) {
-	if p.engine == nil || p.current() == nil {
+	if p.current() == nil {
+		return
+	}
+	if p.cold {
+		p.resumeAt = to
+		return
+	}
+	if p.engine == nil {
 		return
 	}
 	if p.finished {
-		p.finished = false
+		p.finished, p.paused = false, false
+		p.engine.Resume()
 		p.engine.Play(p.track, to)
 		p.reportStart()
 		p.armNext()
@@ -356,6 +395,7 @@ func (p *player) setShuffle(on bool) {
 	}
 	p.next, p.nextIndex = nil, -1
 	p.armNext()
+	p.app.saveQueue()
 }
 
 func (p *player) cycleRepeat() {
@@ -378,6 +418,7 @@ func (p *player) playNext(songs []*library.Song) {
 	p.unshuffled = append(p.unshuffled, songs...)
 	p.next, p.nextIndex = nil, -1
 	p.armNext()
+	p.app.saveQueue()
 }
 
 // enqueue puts songs at the end of the queue.
@@ -392,6 +433,7 @@ func (p *player) enqueue(songs []*library.Song) {
 	p.queue = append(p.queue, songs...)
 	p.unshuffled = append(p.unshuffled, songs...)
 	p.armNext()
+	p.app.saveQueue()
 }
 
 // remove takes the song at i out of the queue.
@@ -409,6 +451,56 @@ func (p *player) remove(i int) {
 	}
 	p.next, p.nextIndex = nil, -1
 	p.armNext()
+	p.app.saveQueue()
+}
+
+// move puts the songs at from, in order, before the song at to of the
+// queue; to is the queue's length for its end. The song playing stays
+// the one playing.
+func (p *player) move(from []int, to int) {
+	cur := p.current()
+	var moved, rest []*library.Song
+	at := -1
+	for i, s := range p.queue {
+		if i == to {
+			at = len(rest)
+		}
+		if slices.Contains(from, i) {
+			moved = append(moved, s)
+		} else {
+			rest = append(rest, s)
+		}
+	}
+	if at < 0 {
+		at = len(rest)
+	}
+	if len(moved) == 0 {
+		return
+	}
+	p.queue = slices.Insert(rest, at, moved...)
+	if cur != nil {
+		// The same song may be in the queue twice: the one playing is
+		// the one that was not moved, at the place it had or near it.
+		for i, s := range p.queue {
+			if s == cur && (i == p.index || !slices.Contains(moved, s)) {
+				p.index = i
+				break
+			}
+		}
+	}
+	p.next, p.nextIndex = nil, -1
+	p.armNext()
+	p.app.saveQueue()
+}
+
+// restore brings back the queue of the last run, paused where it was.
+func (p *player) restore(songs []*library.Song, index int, at time.Duration) {
+	if len(songs) == 0 || p.current() != nil {
+		return
+	}
+	p.queue, p.unshuffled = songs, slices.Clone(songs)
+	p.index = max(0, min(index, len(songs)-1))
+	p.cold, p.paused, p.finished, p.resumeAt = true, true, false, at
 }
 
 // clearUpcoming empties the queue after the song playing.
@@ -419,6 +511,7 @@ func (p *player) clearUpcoming() {
 	p.queue = p.queue[:p.index+1]
 	p.unshuffled = slices.Clone(p.queue)
 	p.armNext()
+	p.app.saveQueue()
 }
 
 // stop ends everything, as signing out does.
@@ -427,7 +520,7 @@ func (p *player) stop() {
 	if p.engine != nil {
 		p.engine.Stop()
 	}
-	p.queue, p.unshuffled, p.index, p.finished = nil, nil, -1, false
+	p.queue, p.unshuffled, p.index, p.finished, p.paused = nil, nil, -1, false, false
 	p.track, p.next, p.nextIndex = nil, nil, -1
 }
 

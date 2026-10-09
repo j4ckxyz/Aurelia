@@ -72,6 +72,7 @@ func appDirs() dirs {
 }
 
 func (d dirs) settingsFile() string { return filepath.Join(d.data, "settings.json") }
+func (d dirs) queueFile() string    { return filepath.Join(d.data, "queue.json") }
 func (d dirs) themes() string       { return filepath.Join(d.data, "themes") }
 func (d dirs) images() string       { return filepath.Join(d.cache, "images") }
 func (d dirs) audio() string        { return filepath.Join(d.cache, "audio") }
@@ -116,4 +117,13 @@ func (s *Settings) save(d dirs) error {
 		return err
 	}
 	return os.Rename(tmp, d.settingsFile())
+}
+
+// savedQueue is the queue as it is kept between runs: the songs by their
+// IDs, which one played, and where it was.
+type savedQueue struct {
+	Server   string   `json:"server"`
+	Songs    []string `json:"songs"`
+	Index    int      `json:"index"`
+	Position float64  `json:"position"` // seconds
 }

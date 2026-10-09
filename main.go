@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"runtime"
 	"runtime/debug"
 	"time"
@@ -26,12 +27,21 @@ func main() {
 	debug.SetGCPercent(25)
 	debug.SetMemoryLimit(64 << 20)
 
+	// One Aurelia at a time: opening it again shows the one running.
+	// Development runs several, each with a directory of its own.
+	single := os.Getenv("AURELIA_DIR") == ""
+	if single && !mygo.App.RequestSingleInstanceLock() {
+		return
+	}
 	a := newApp(appDirs(), false)
+	if single {
+		mygo.App.OnSecondInstance(func([]string, string) { a.show() })
+	}
 	mygo.App.SetMenu(a.menu())
 	mygo.App.WhenReady(a.open)
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
-		if !hasVisibleWindows && a.win == nil {
-			a.open()
+		if !hasVisibleWindows {
+			a.show()
 		}
 	})
 	mygo.App.OnWindowAllClosed(func() {
@@ -41,7 +51,10 @@ func main() {
 			mygo.App.Quit()
 		}
 	})
-	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quit() })
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+		a.quitting = true
+		a.quit()
+	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
@@ -72,6 +85,16 @@ func (a *App) open() {
 	a.win = win
 	a.rescale()
 	win.OnMove(a.rescale)
+	if runtime.GOOS == "darwin" {
+		// Closing the window hides it, and the music plays on, as in
+		// the system's own player; the Dock's icon shows it again.
+		win.OnClose(func(e *mygo.CloseEvent) {
+			if !a.quitting {
+				e.PreventDefault()
+				win.Hide()
+			}
+		})
+	}
 	win.OnClosed(func() { a.win = nil })
 	mygo.Theme.OnUpdated(func() {
 		dark := mygo.Theme.IsDark()
@@ -81,9 +104,20 @@ func (a *App) open() {
 		a.started = true
 		a.start()
 		a.mediaKeys()
+		a.system.init(a)
 	}
 	win.Update(a.drain) // what happened before there was a window
 	a.debugHook()
+}
+
+// show brings the window back, or opens one.
+func (a *App) show() {
+	if a.win == nil {
+		a.open()
+		return
+	}
+	a.win.Show()
+	a.win.Focus()
 }
 
 // rescale notes the pixels per point of the display the window is on,
@@ -125,10 +159,12 @@ func (a *App) quit() {
 		c.ReportStop(ctx, pb)
 		cancel()
 	}
+	a.saveQueue()
 	if p.engine != nil {
 		p.engine.Close()
 	}
 	a.saveSettings()
+	a.queueWrites.Wait() // the queue's file is written on another goroutine
 }
 
 // menu is the app's menu bar.

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -199,10 +200,126 @@ func TestQueue(t *testing.T) {
 	if p.following() != 0 {
 		t.Errorf("repeating all, after the last comes %d", p.following())
 	}
+	// Songs of the queue move to another place, and the one playing
+	// stays the one playing.
+	p.setShuffle(false)
+	p.play([]*library.Song{a.lib.Song("s1"), a.lib.Song("s2"), a.lib.Song("s3"), a.lib.Song("s4")}, 1)
+	p.move([]int{3}, 2)
+	if got := queueIDs(p); got != "s1 s2 s4 s3" || p.current().ID != "s2" {
+		t.Errorf("after moving the last up: %s, playing %s", got, p.current().ID)
+	}
+	p.move([]int{2}, 4)
+	if got := queueIDs(p); got != "s1 s2 s3 s4" || p.index != 1 {
+		t.Errorf("after moving it to the end: %s at %d", got, p.index)
+	}
+	// A double click in the queue plays from there.
+	tt.Frame()
+	box, _ := tt.Find("The A Team")
+	tt.ClickAt(box.X+4, box.Y+4)
+	tt.ClickAt(box.X+4, box.Y+4)
+	if p.current().ID != "s4" || p.index != 3 {
+		t.Errorf("after a double click on a song of the queue: %s at %d", p.current().ID, p.index)
+	}
+	p.playIndex(1)
+	// Dragged in the queue's panel.
+	tt.Frame()
+	from, ok1 := tt.Find("The A Team")
+	to, ok2 := tt.Find("Formation")
+	if !ok1 || !ok2 {
+		t.Fatalf("the queue does not show its songs: %q", tt.Texts())
+	}
+	tt.Press(from.X+4, from.Y+from.H/2)
+	for k := float32(1); k <= 4; k++ {
+		tt.Move(from.X+4, from.Y+from.H/2+(to.Y+2-from.Y-from.H/2)*k/4)
+	}
+	tt.Release(to.X+4, to.Y+2)
+	if got := queueIDs(p); got != "s1 s2 s4 s3" || p.current().ID != "s2" {
+		t.Errorf("after dragging: %s, playing %s", got, p.current().ID)
+	}
+	a.player.playIndex(2)
+
 	// A new library keeps the queue, on its own songs.
 	a.setLibrary(library.Build(a.lib.Data))
-	if p.current() != a.lib.Song("s3") {
+	if p.current() != a.lib.Song("s4") {
 		t.Error("the queue holds songs of the library before")
+	}
+}
+
+// The queue comes back in the next run, paused where it was.
+func TestQueueComesBack(t *testing.T) {
+	a := testApp(t)
+	a.player.play(a.lib.AlbumSongs("al1"), 1)
+	a.player.enqueue([]*library.Song{a.lib.Song("s4")})
+	a.saveQueue()
+	a.queueWrites.Wait() // written on another goroutine
+
+	b := newApp(a.dirs, true)
+	b.settings.Session = a.settings.Session
+	b.setClient(a.clientNow())
+	b.setLibrary(library.Build(a.lib.Data))
+	p := b.player
+	if got := queueIDs(p); got != "s1 s2 s4" || p.current() == nil || p.current().ID != "s2" {
+		t.Fatalf("the queue that came back: %s at %d", got, p.index)
+	}
+	if st := p.state(); !st.Paused || !p.cold {
+		t.Errorf("it came back playing: %+v", st)
+	}
+	tt := ui.NewTester(b.view, 1240, 800)
+	wantTexts(t, tt, "Perfect")
+	p.seek(42 * time.Second)
+	if got := p.state().Position; got != 42*time.Second {
+		t.Errorf("a seek before it plays: at %v", got)
+	}
+}
+
+// The keys of the window leave typing alone, and the button over an
+// album's picture plays it without opening it.
+func TestKeysAndHover(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.player.play(a.lib.AlbumSongs("al1"), 0)
+	tt.Frame()
+	paused := func() bool { return a.player.paused }
+	// Space plays and pauses.
+	tt.Key(0, ui.KeySpace)
+	if !paused() {
+		t.Error("Space did not pause")
+	}
+	tt.Key(0, ui.KeySpace)
+	if paused() {
+		t.Error("Space did not play on")
+	}
+	tt.Key(primary, ui.KeyRight)
+	if a.player.current().ID != "s2" {
+		t.Errorf("the next-song key: at %s", a.player.current().ID)
+	}
+	// But in the search field a space is a space, and the arrows move in
+	// the text.
+	click(t, tt, "Search")
+	tt.Type("shape of")
+	tt.Key(primary, ui.KeyLeft)
+	if paused() || a.search.query != "shape of" || a.player.current().ID != "s2" {
+		t.Errorf("typing: paused %v, the field holds %q, playing %s", paused(), a.search.query, a.player.current().ID)
+	}
+	// The pointer over an album shows its play button.
+	a.router.Push("/albums")
+	tt.Frame()
+	if tt.HasText("Play Lemonade") {
+		t.Fatal("the play button shows without the pointer")
+	}
+	box, ok := tt.Find("Lemonade")
+	if !ok {
+		t.Fatal("no album Lemonade")
+	}
+	// Over its picture, whether the box found is the tile's or its title's.
+	if box.H > 100 {
+		tt.Move(box.X+box.W/2, box.Y+box.W/2)
+	} else {
+		tt.Move(box.X+box.W/2, box.Y-60)
+	}
+	click(t, tt, "Play Lemonade")
+	if a.router.Path() != "/albums" || a.player.current().ID != "s3" {
+		t.Errorf("after the play button: at %s, playing %s", a.router.Path(), a.player.current().ID)
 	}
 }
 
