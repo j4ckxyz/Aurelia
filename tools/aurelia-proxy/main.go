@@ -223,10 +223,11 @@ func proxyURL(c config, cert tls.Certificate, password string) string {
 }
 
 type proxy struct {
-	c        config
-	want     [sha256.Size]byte // of "user:password"
-	slots    chan struct{}
-	resolver *net.Resolver
+	c     config
+	want  [sha256.Size]byte // of "user:password"
+	slots chan struct{}
+	// lookup finds a name's addresses; tests put their own.
+	lookup func(ctx context.Context, host string) ([]net.IPAddr, error)
 	// dial connects to a vetted address; tests put their own.
 	dial func(ctx context.Context, addr string) (net.Conn, error)
 	// public reports whether an address is one of the internet; tests
@@ -246,7 +247,7 @@ type failures struct {
 func newProxy(c config, password string) *proxy {
 	return &proxy{
 		c: c, want: sha256.Sum256([]byte(c.user + ":" + password)), slots: make(chan struct{}, c.tunnels),
-		resolver: net.DefaultResolver, failed: map[string]*failures{}, public: publicAddress,
+		lookup: net.DefaultResolver.LookupIPAddr, failed: map[string]*failures{}, public: publicAddress,
 		dial: func(ctx context.Context, addr string) (net.Conn, error) {
 			return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", addr)
 		},
@@ -386,7 +387,7 @@ func (p *proxy) allowed(host, port string) bool {
 func (p *proxy) connect(ctx context.Context, host, port string) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	addrs, err := p.resolver.LookupIPAddr(ctx, host)
+	addrs, err := p.lookup(ctx, host)
 	if err != nil {
 		return nil, err
 	}

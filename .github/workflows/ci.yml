@@ -38,6 +38,13 @@ jobs:
         env:
           AURELIA_REQUIRE_DBUS: "1"
         run: dbus-run-session -- go test ./...
+      - name: The proxy's sandbox
+        # It holds only in a build without cgo, as the proxy is built.
+        if: runner.os == 'Linux'
+        env:
+          CGO_ENABLED: "0"
+          AURELIA_REQUIRE_SANDBOX: "1"
+        run: go test ./tools/aurelia-proxy -run Sandbox -v
       - name: What the system is told plays
         shell: bash
         env:

@@ -34,9 +34,12 @@ func testProxy(t *testing.T, target string, allow ...string) (c config, password
 	p.dial = func(ctx context.Context, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "tcp", target)
 	}
-	p.resolver = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+	p.lookup = func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		if host == "localhost" {
+			return []net.IPAddr{{IP: net.IPv4(127, 0, 0, 1)}}, nil
+		}
 		return nil, fmt.Errorf("no DNS in tests")
-	}}
+	}
 	srv := httptest.NewUnstartedServer(p)
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	srv.Config.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){}
@@ -89,7 +92,7 @@ func TestProxy(t *testing.T) {
 			go func() { defer c.Close(); io.Copy(c, c) }()
 		}
 	}()
-	// localhost resolves without DNS, and stands for the allowed server.
+	// localhost stands for the allowed server.
 	c, password, cert, p, addr := testProxy(t, echo.Addr().String(), "localhost", "*.allowed.example")
 
 	// The tunnel carries bytes both ways.

@@ -88,7 +88,10 @@ func sandbox(readable []string, connectPorts []string) (string, error) {
 		network = "connections to ports " + strings.Join(connectPorts, ", ") + " only, and no new listening"
 	}
 	// On every thread of the process: Go runs on several.
-	if _, _, errno := syscall.AllThreadsSyscall(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0); errno != 0 {
+	if _, _, errno := syscall.AllThreadsSyscall(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0); errno == unix.ENOTSUP {
+		// Go cannot do it on every thread of a program linked with C.
+		return "", errors.New("the sandbox needs a build without cgo: CGO_ENABLED=0")
+	} else if errno != 0 {
 		return "", fmt.Errorf("no_new_privs: %w", errno)
 	}
 	// Landlock's rules are for TCP. Multipath TCP is another protocol to

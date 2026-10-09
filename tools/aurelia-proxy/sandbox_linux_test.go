@@ -37,11 +37,13 @@ func TestSandbox(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	got := string(out)
 	t.Log(strings.TrimSpace(got))
-	if strings.Contains(got, "no Landlock") {
-		if os.Getenv("AURELIA_REQUIRE_SANDBOX") != "" {
-			t.Fatal("this kernel has no Landlock")
+	for _, why := range []string{"no Landlock", "without cgo"} {
+		if strings.Contains(got, why) {
+			if os.Getenv("AURELIA_REQUIRE_SANDBOX") != "" {
+				t.Fatal("no sandbox here, and AURELIA_REQUIRE_SANDBOX asks for one")
+			}
+			t.Skip("no sandbox here")
 		}
-		t.Skip("this kernel has no Landlock")
 	}
 	if err != nil {
 		t.Fatalf("the sandboxed process failed: %v", err)
