@@ -62,10 +62,16 @@ little kept on disk.
         *(macOS verified; the return is checked every five seconds)*
   - [x] Changing the device while a song plays does not stop the song.
         *(macOS verified, to a virtual device and back)*
-  - [ ] On macOS, Windows and Linux. macOS done; Linux (PulseAudio and
-        ALSA) is tested in CI against two PulseAudio sinks; Windows
-        (WASAPI) is written and its listing is run in CI, but no Windows
-        machine with a sound card has played through it yet.
+  - [ ] On macOS, Windows and Linux. **macOS** verified in the app.
+        **Linux, PulseAudio** verified in CI (`TestPulseDevices`): sound
+        was played on one of two sinks, moved to the other while it played,
+        and PulseAudio was asked which it was on; a sink that does not
+        exist falls back to the default. **Linux, ALSA** is written (its
+        outputs are listed from ALSA's hints and one is opened by name) and
+        not tried: CI has PulseAudio. **Windows** (WASAPI) is written
+        (the endpoints are listed and opened by ID, and the render loop
+        opens another when asked) and vetted, and its listing runs in CI,
+        where no sound card exists: no one has played through it yet.
 - [ ] *Suggested, to choose from:*
   - [ ] Normalization by album as well as by song, so that an album
         keeps its own quiet and loud songs.
@@ -77,9 +83,6 @@ little kept on disk.
 Taken from Spotify and from other clients of Jellyfin and Navidrome
 (Feishin, Finamp, Supersonic, Plexamp). These are Claude's suggestions,
 not asked for one by one: strike out what is not wanted.
-
-Playing
-
 
 Library
 

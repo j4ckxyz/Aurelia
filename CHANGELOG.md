@@ -1,5 +1,33 @@
 # Changes
 
+## 0.3.0
+
+- An equalizer: ten bands and a preamp, presets and your own, heard as a
+  slider moves. Mono audio and a balance beside it.
+- A choice of output device in Settings ▸ Playback, kept between runs. The
+  sound moves while a song plays, falls back to the default when the device
+  is gone, and returns to it when it is back. On macOS, Linux (PulseAudio and
+  ALSA) and Windows.
+- Crossfade between songs, 2 to 12 seconds, never between songs that follow
+  each other on an album; and a sleep timer, after a time (the sound fades)
+  or at the end of the song or the album.
+- Share as a Picture: the cover, the name and the artist on white, black,
+  a color of your own or the cover's colors, as a square, a story or a wide
+  picture, copied or saved as a PNG.
+- Start Radio on songs, albums and artists, and "Keep playing similar
+  songs" for when the queue ends. "Fans also like" on artists' pages.
+- Playlists made here: add to a playlist, new, rename, delete, move and
+  remove songs, and keep the queue as a playlist. Pin albums, artists and
+  playlists to the sidebar.
+- Browse by genre and by decade, Your listening, the songs by Recently
+  Played and Never Played, and Song Info with how a song is played.
+- Short animations as pages, panels and pictures come in, with a setting
+  that follows the system's Reduce motion; and bars that move beside the
+  song playing.
+- An icon in the menu bar or the tray, a notification as the song changes,
+  scrobbling to ListenBrainz, and lyrics from LRCLIB when the server has
+  none (off until you turn it on).
+
 ## 0.2.0
 
 - The record: a button of the player's bar, or V, shows the song as its

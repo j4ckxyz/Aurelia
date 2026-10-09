@@ -23,6 +23,9 @@ playlists. It does not show movies or shows.
 | ![Lyrics and the queue](docs/lyrics.png) | ![A window at its smallest](docs/small.png) |
 | ![Albums, in the light theme](docs/albums-light.png) | ![An artist, in Tokyo Night](docs/artist-tokyo-night.png) |
 | ![Search, in Catppuccin Mocha](docs/search-catppuccin.png) | ![The themes](docs/themes.png) |
+| ![Browsing by genre and decade](docs/browse.png) | ![The equalizer](docs/equalizer.png) |
+
+![Sharing an album as a picture](docs/share.png)
 
 The screenshots show a library made up for them, with pictures drawn by
 `screenshots_test.go`: `AURELIA_SCREENSHOTS=docs go test -run Screenshots .`
@@ -100,7 +103,42 @@ installing a newer `.deb` instead.
   connections. Volume normalization plays every song about as loud, at one
   of three levels as in Spotify: Louder, Normal or Quieter. Plays are
   reported to the server.
-- **Lyrics**, with the line being sung lit when the lyrics are timed.
+- **An equalizer** of ten bands and a preamp, with presets and your own,
+  heard the instant a slider moves; with mono audio and a balance.
+- **Your choice of output.** Settings ▸ Playback lists the computer's
+  outputs, and the one you choose is kept: the sound moves to it while a
+  song plays, and goes back to the system's default when it is not plugged
+  in, and back again when it is. **Crossfade** (2 to 12 seconds, never
+  between songs that follow each other on an album) and a **sleep timer**
+  (after a time, with the sound fading out, or at the end of the song or
+  the album) are there too.
+- **Share as a picture.** "Share as a Picture…" in the menu of a song or an
+  album makes a clean picture of its cover with its name and the artist's,
+  on white, on black, on a color of your own or on the cover's own colors,
+  square, tall for stories or wide, to copy or save as a PNG.
+- **Radio.** "Start Radio" on a song, an album or an artist plays songs the
+  server finds like it; "Keep playing similar songs" (off unless you turn it
+  on) goes on with them when the queue ends. Artists' pages say who else
+  their fans like.
+- **Playlists, made here.** Add a song or an album to a playlist, make a new
+  one, rename it, put its songs in another order, take one out, delete it,
+  or keep the queue as a playlist. They are the server's, so every device
+  has them.
+- **Browse by genre and by decade**, "Your listening" (what you play most),
+  and the songs sorted by what was played lately, most, or never. Pin
+  albums, artists and playlists to the sidebar.
+- **Lyrics**, with the line being sung lit when the lyrics are timed. When
+  the server has none, Aurelia can ask LRCLIB, a free database of them, if
+  you let it (Settings ▸ Playback; it is told the song's artist, title,
+  album and length).
+- **On your desktop.** An icon in the menu bar or the tray with the song and
+  its buttons (and closing the window leaves the music playing), a
+  notification as the song changes while Aurelia is behind, and
+  **scrobbling to ListenBrainz** or a server of your own that speaks as it
+  does: your token in Settings ▸ Scrobbling.
+- **Short animations**, a hint of movement as pages, panels and pictures
+  come in, that follow the system's Reduce motion (Settings ▸ Appearance ▸
+  Animations).
 - **The record.** A button of the player's bar, or V, shows the song in
   place of the app: its cover as a record that turns while it plays, over
   the cover's own colors, and the lyrics under it, each line sliding up as
@@ -306,6 +344,7 @@ Colors are `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` or `hsl()`.
 | ⌥⇧H, ⌥⇧4, ⌥⇧3, ⌥⇧2, ⌥⇧S, ⌥⇧1, ⌥⇧D | Home, Albums, Artists, Songs, Favorites, Playlists, Downloads; ⌘1 … ⌘6 too |
 | ⌥⇧J | The album of the song playing |
 | ⌥⇧Q / ⌥⇧L | The queue / the lyrics |
+| ⌥⇧E | The equalizer |
 | V / F / ⇧⌘M | The record in the window / in full screen / in a small window |
 | ⌘B | Show or hide the sidebar |
 | ⇧⌘R | Update the library |
