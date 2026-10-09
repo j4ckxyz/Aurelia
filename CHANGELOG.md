@@ -1,5 +1,16 @@
 # Changes
 
+## 0.1.4
+
+- A proxy of your own: `tools/aurelia-proxy` runs on a Linux machine with
+  a public address, without root or a domain name. It asks for a password,
+  reaches only the servers you name, and shuts itself in.
+- A proxy at `https://` with a certificate of its own making, as that one
+  has, is trusted by its fingerprint: `https://user:password@host:8443#pin-sha256=...`.
+- Aurelia names itself in what it asks of the network. Servers behind
+  Cloudflare turned it away when it came through a proxy at a hosting
+  company, taking it for a script.
+
 ## 0.1.3
 
 - A proxy, HTTP or SOCKS5, to reach a server that the network blocks: on

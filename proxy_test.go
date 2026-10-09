@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"io"
@@ -10,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,7 +33,7 @@ func TestParseProxy(t *testing.T) {
 		"http://user:secret@proxy.ex:3128": "http://user:secret@proxy.ex:3128",
 		"https://proxy.example:443/path?x": "https://proxy.example:443",
 	} {
-		u, err := parseProxy(in)
+		u, _, err := parseProxy(in)
 		got := ""
 		if u != nil {
 			got = u.String()
@@ -39,7 +43,7 @@ func TestParseProxy(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{"socks4://host:1080", "ftp://host:21", "http://host", "host", "http://:8080", "socks5://"} {
-		if u, err := parseProxy(bad); err == nil {
+		if u, _, err := parseProxy(bad); err == nil {
 			t.Errorf("parseProxy(%q) = %v, and no error", bad, u)
 		}
 	}
@@ -81,16 +85,19 @@ func fakeJellyfin(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// httpProxy is a proxy that knows where the blocked server is, and notes
-// what it is asked.
-func httpProxy(t *testing.T, target string) (address string, asked func() []string) {
+// anyProxy is a proxy that knows where the blocked server is, and notes
+// what it is asked; secure, it is spoken to over TLS.
+func anyProxy(t *testing.T, target string, secure bool) (address string, asked func() []string) {
 	t.Helper()
 	var mu sync.Mutex
 	var log []string
 	direct := &http.Transport{Proxy: nil}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		log = append(log, r.Method+" "+r.RequestURI)
+		if auth := r.Header.Get("Proxy-Authorization"); auth != "" {
+			lastProxyAuth = auth
+		}
 		mu.Unlock()
 		if r.Method == http.MethodConnect {
 			// A tunnel: the proxy passes bytes it cannot read.
@@ -125,11 +132,90 @@ func httpProxy(t *testing.T, target string) (address string, asked func() []stri
 		w.WriteHeader(resp.StatusCode)
 		io.Copy(w, resp.Body)
 	}))
+	if secure {
+		srv.StartTLS() // with a certificate nobody vouches for
+		lastProxyCert = srv.Certificate()
+	} else {
+		srv.Start()
+	}
 	t.Cleanup(srv.Close)
-	return strings.TrimPrefix(srv.URL, "http://"), func() []string {
+	return strings.TrimPrefix(strings.TrimPrefix(srv.URL, "https://"), "http://"), func() []string {
 		mu.Lock()
 		defer mu.Unlock()
 		return append([]string(nil), log...)
+	}
+}
+
+// What the last proxy of a test was sent to sign in with, and the
+// certificate of the last one that spoke TLS.
+var (
+	lastProxyAuth string
+	lastProxyCert *x509.Certificate
+)
+
+// httpProxy is a proxy spoken to in the clear.
+func httpProxy(t *testing.T, target string) (address string, asked func() []string) {
+	return anyProxy(t, target, false)
+}
+
+// A proxy at https:// that vouches for itself is taken by its
+// fingerprint, as aurelia-proxy gives it, and by nothing else; servers
+// are checked as ever.
+func TestPinnedProxy(t *testing.T) {
+	server := fakeJellyfin(t)
+	addr, asked := anyProxy(t, strings.TrimPrefix(server.URL, "http://"), true)
+	sum := sha256.Sum256(lastProxyCert.RawSubjectPublicKeyInfo)
+	pin := base64.RawURLEncoding.EncodeToString(sum[:])
+	a := testApp(t)
+	t.Cleanup(func() { a.setProxy("") })
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	login := func() error {
+		_, err := jellyfin.Login(ctx, "http://"+blocked, "ada", "secret", "dev", "test")
+		return err
+	}
+
+	// Without the fingerprint, the certificate is nobody's.
+	if err := a.setProxy("https://aurelia:hunter2@" + addr); err != nil {
+		t.Fatal(err)
+	}
+	if err := login(); err == nil || !strings.Contains(err.Error(), "certificate") {
+		t.Errorf("a proxy that vouches for itself, without its fingerprint: %v", err)
+	}
+	// With another's fingerprint, it is not the proxy meant.
+	other := sha256.Sum256([]byte("another key"))
+	if err := a.setProxy("https://aurelia:hunter2@" + addr + "#pin-sha256=" + base64.RawURLEncoding.EncodeToString(other[:])); err != nil {
+		t.Fatal(err)
+	}
+	if err := login(); err == nil || !strings.Contains(err.Error(), "someone may be in between") {
+		t.Errorf("a proxy with another certificate than the one named: %v", err)
+	}
+	if n := len(asked()); n != 0 {
+		t.Errorf("the proxy was asked %d things before it was trusted", n)
+	}
+	// With its own, it carries the sign-in, and is given the password of
+	// its address.
+	if err := a.setProxy("https://aurelia:hunter2@" + addr + "#pin-sha256=" + pin); err != nil {
+		t.Fatal(err)
+	}
+	if err := login(); err != nil {
+		t.Fatalf("through the proxy taken by its fingerprint: %v", err)
+	}
+	if want := "Basic " + base64.StdEncoding.EncodeToString([]byte("aurelia:hunter2")); lastProxyAuth != want {
+		t.Errorf("the proxy was signed in to with %q", lastProxyAuth)
+	}
+	// A server reached without the proxy, as one on this computer, is
+	// still checked: the fingerprint is the proxy's alone.
+	local := httptest.NewTLSServer(http.NotFoundHandler())
+	defer local.Close()
+	if _, err := jellyfin.Probe(ctx, local.URL); err == nil || !strings.Contains(err.Error(), "certificate") {
+		t.Errorf("a server with a certificate nobody vouches for, beside a pinned proxy: %v", err)
+	}
+	// Fingerprints that are none.
+	for _, bad := range []string{"https://h:1#pin-sha256=short", "http://h:1#pin-sha256=" + pin, "socks5://h:1#pin-sha256=" + pin} {
+		if err := a.setProxy(bad); err == nil {
+			t.Errorf("%s was taken", bad)
+		}
 	}
 }
 
@@ -316,5 +402,33 @@ func TestAProxyCannotReadHTTPS(t *testing.T) {
 		if line != "CONNECT "+blocked+":443" {
 			t.Errorf("the proxy saw %q", line)
 		}
+	}
+}
+
+// Every request says it is Aurelia's: under the name of Go's library, a
+// server behind Cloudflare turns away what comes from a proxy's address.
+func TestRequestsSayWhoAsks(t *testing.T) {
+	var got atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.Store(r.UserAgent())
+	}))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if ua, _ := got.Load().(string); ua != "Aurelia/"+jellyfin.Version {
+		t.Errorf("the request came as %q", ua)
+	}
+	// One that names itself keeps its name.
+	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req.Header.Set("User-Agent", "other")
+	if resp, err = http.DefaultClient.Do(req); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if ua, _ := got.Load().(string); ua != "other" {
+		t.Errorf("a request with a name of its own came as %q", ua)
 	}
 }

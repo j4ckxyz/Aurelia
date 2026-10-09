@@ -143,6 +143,47 @@ name need not resolve where you are.
 Without the setting, Aurelia follows `HTTPS_PROXY` and `HTTP_PROXY` of the
 environment, as most programs do.
 
+### A proxy of your own
+
+`tools/aurelia-proxy` is a small proxy made for this, for a Linux machine
+of yours with a public address, a cheap VPS for one. It needs no root and
+no domain name, and it is of no use to anyone but you:
+
+- it asks for a password, which it makes itself, and turns away for ten
+  minutes an address that guesses ten times;
+- it reaches only the servers you name, on port 443, and never an address
+  inside its own machine or network;
+- it speaks TLS with a certificate it makes itself, so the password is not
+  sent in the clear. Aurelia is given the certificate's fingerprint, and
+  talks to nothing else at that address;
+- on Linux it shuts itself in, with Landlock and seccomp: once started it
+  can open no file but the resolver's, connect to no port but 443 and DNS,
+  and listen nowhere new. Were it broken into, the rest of the machine is
+  out of its reach.
+
+```
+git clone https://github.com/j4ckxyz/Aurelia && cd Aurelia
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o aurelia-proxy ./tools/aurelia-proxy
+
+# on the machine, 203.0.113.7 being its public address:
+./aurelia-proxy -sandbox -name 203.0.113.7 -listen :8443 -allow music.example.com,github.com,*.githubusercontent.com
+./aurelia-proxy -name 203.0.113.7 url
+```
+
+`url` prints what to paste into Aurelia, the password and the fingerprint
+in it:
+
+```
+https://aurelia:password@203.0.113.7:8443#pin-sha256=...
+```
+
+The two GitHub names let Aurelia fetch its updates through it; leave them
+out and updates wait for a network that reaches GitHub. The port must be
+open in the machine's firewall; 443, if you can give it, passes more
+networks than any other. `-help` lists the rest, and the proxy's files are
+in `~/.config/aurelia-proxy`: delete `password` and start it again for a
+new one.
+
 ## Themes
 
 Settings ▸ Appearance lists the themes. **New theme** opens the editor on a
@@ -266,6 +307,7 @@ audio tests a file, and `AURELIA_TEST_DEVICE=1` plays it on the sound card.
 | `downloads.go` | what is kept for offline |
 | `update.go` | the app's own updates |
 | `proxy.go` | the proxy the app reaches the network through, and the one transport everything uses |
+| `tools/aurelia-proxy` | a proxy to run on a machine of your own, for this app only |
 | `nowplaying_darwin.go`, `nowplaying_linux.go`, `nowplaying_windows.go` | what plays, told to the system: Now Playing, MPRIS, and the System Media Transport Controls |
 | `images.go` | pictures: in memory, on disk, and from the server |
 | `internal/jellyfin` | the server's API |
