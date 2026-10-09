@@ -67,6 +67,8 @@ func main() {
 // open opens the window.
 func (a *App) open() {
 	a.systemDark = mygo.Theme.IsDark()
+	a.applyMotion()
+	a.readSystemMotion()
 	opts := mygo.WindowOptions{
 		Title:           "Aurelia",
 		Width:           1240,

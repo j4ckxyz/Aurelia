@@ -95,10 +95,14 @@ type App struct {
 	sidebarDirty             bool
 	// stage is the full screen of the song playing.
 	stage stage
+	// share is the picture being made of a song or an album.
+	share shareState
 	// settingsScroll is how far the settings are scrolled.
 	settingsScroll ui.ScrollState
 	// eq is the equalizer's page.
 	eq eqState
+	// systemReduces is the system's own wish to reduce motion.
+	systemReduces bool
 	// output is the computer's outputs, to play on.
 	output outputState
 	// remote is the other devices of the user, to play on.

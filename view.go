@@ -104,7 +104,12 @@ func (a *App) view(c *ui.Context) {
 			}
 			content.Children(func() {
 				a.topBar(c)
-				a.router.View(c, func(r *ui.Route) { a.route(c, r) })
+				// A page comes in a little way up; the one before goes at
+				// once. Keyed by its path, not its query: typing a search
+				// does not move the page.
+				ui.Column(c.Key("page:" + a.router.Path())).Grow(1).MinHeight(0).Transition(tween(pageIn)).Children(func() {
+					a.router.View(c, func(r *ui.Route) { a.route(c, r) })
+				})
 			})
 			if a.queueShown(c) {
 				a.queuePanel(c)
@@ -117,6 +122,7 @@ func (a *App) view(c *ui.Context) {
 	if a.player.far != nil {
 		bottom += farStripH
 	}
+	a.shareDialog(c)
 	a.toastLayer(c, bottom)
 }
 
@@ -376,7 +382,9 @@ func (a *App) art(c *ui.Context, id, tag string, dip float32, glyph string, over
 	bmp := a.picture(id, tag, dip)
 	box.Children(func() {
 		if bmp != nil {
-			ui.Image(c, bmp).Absolute().Top(0).Left(0).Right(0).Bottom(0).Fit(ui.Cover)
+			// Keyed by the picture, so that one that comes late or changes
+			// fades in, and the one it replaces fades out.
+			ui.Image(c.Key("pic:"+id+tag), bmp).Absolute().Top(0).Left(0).Right(0).Bottom(0).Fit(ui.Cover).Transition(tween(picturesIn))
 		} else {
 			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Center().Children(func() {
 				ui.Icon(c, icon(glyph)).FontSize(max(16, min(dip*0.3, 56))).TextColor(p.faint)
@@ -394,7 +402,7 @@ func (a *App) art(c *ui.Context, id, tag string, dip float32, glyph string, over
 func (a *App) sidebar(c *ui.Context) {
 	p := a.pal
 	bar := c.TitleBar()
-	ui.Column(c).Width(a.sidebarWidth()).Shrink(0).Background(p.sidebar).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
+	ui.Column(c.Key("sidebar")).Width(a.sidebarWidth()).Shrink(0).Transition(tween(sidebarIn)).Background(p.sidebar).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
 		a.sidebarHandle(c)
 		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 10, 0, max(bar.Left+4, 12)).Gap(2).DragWindow().Children(func() {
 			if bar.Left == 0 {
@@ -684,6 +692,9 @@ func (a *App) songMenu(m *ui.Menu, s *library.Song) {
 		a.goTo("/artist/" + id)
 	}
 	m.Separator()
+	if m.Item("Share as a Picture…").Chosen() {
+		a.shareSong(s)
+	}
 	label := "Add to Favorites"
 	if s.Favorite {
 		label = "Remove from Favorites"
@@ -721,6 +732,10 @@ func (a *App) albumMenu(m *ui.Menu, al *library.Album) {
 	if id := a.artistOf(al.ArtistIDs); id != "" && m.Item("Go to Artist").Chosen() {
 		a.goTo("/artist/" + id)
 	}
+	if m.Item("Share as a Picture…").Chosen() {
+		a.shareAlbum(al)
+	}
+	m.Separator()
 	label := "Add to Favorites"
 	if al.Favorite {
 		label = "Remove from Favorites"

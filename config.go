@@ -60,6 +60,8 @@ type Settings struct {
 	SidebarW      int  `json:"sidebarW,omitempty"`
 	// MiniPinned keeps the small window of the record above the others.
 	MiniPinned bool `json:"miniPinned,omitempty"`
+	// Motion is "" to follow the system's Reduce motion, "on" or "reduced".
+	Motion string `json:"motion,omitempty"`
 	// OutputDevice is the ID of the output to play on, "" for the
 	// system's default, and OutputName what it was called, for when it is
 	// not plugged in.

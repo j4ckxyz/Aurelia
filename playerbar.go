@@ -34,8 +34,12 @@ func (a *App) playerBar(c *ui.Context) {
 		gap = 10
 	}
 	ui.Row(c).Height(playerH).Shrink(0).Padding(0, gap).Gap(gap).Background(p.bar).BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
-		// What plays.
-		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(12).Children(func() {
+		// What plays: a right click on it has the menu of the song.
+		now := ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(12)
+		if song != nil {
+			now.ContextMenu(func(m *ui.Menu) { a.songMenu(m, song) })
+		}
+		now.Children(func() {
 			if song == nil {
 				return
 			}
@@ -307,7 +311,7 @@ func (a *App) volume(c *ui.Context, slider bool) {
 func (a *App) queuePanel(c *ui.Context) {
 	p := a.pal
 	pl := a.player
-	ui.Column(c).Width(queueW).Shrink(0).Background(p.sidebar).BorderWidth(0, 0, 0, 1).BorderColor(p.border).Children(func() {
+	ui.Column(c.Key("queue-panel")).Width(queueW).Shrink(0).Transition(tween(panelIn)).Background(p.sidebar).BorderWidth(0, 0, 0, 1).BorderColor(p.border).Children(func() {
 		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 10, 0, 18).DragWindow().Children(func() {
 			ui.Text(c, "Queue").FontSize(15).FontWeight(700).Grow(1)
 			if len(pl.queue) > pl.index+1 && pl.index >= 0 {

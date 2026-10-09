@@ -1,6 +1,9 @@
 package main
 
 import (
+	"math"
+	"time"
+
 	"github.com/egoist/mygo/ui"
 
 	"aurelia/internal/library"
@@ -35,7 +38,7 @@ func (a *App) tile(c *ui.Context, t tile) {
 				return
 			}
 			// The play button, over the picture's corner.
-			pb := ui.ButtonBase(c).Size(42, 42).Radius(21).Attach(ui.AnchorBottomRight, ui.AnchorBottomRight).Right(8).Bottom(8).
+			pb := ui.ButtonBase(c.Key("play")).Size(42, 42).Radius(21).Transition(tween(risesIn)).Attach(ui.AnchorBottomRight, ui.AnchorBottomRight).Right(8).Bottom(8).
 				Background(p.accent).Shadow(0, 4, 12, 0, p.shadow).Label("Play " + t.title).Cursor(ui.CursorPointer)
 			if pb.Hovered() {
 				pb.Background(p.accentHover)
@@ -211,7 +214,7 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 					play = true
 				}
 			case current:
-				ui.Icon(c, icon("audio-lines")).Size(18, 18).TextColor(p.accent)
+				a.playingBars(c, 18)
 			case r.number > 0:
 				ui.Textf(c, "%d", r.number).TextColor(p.muted).FontFeatures("tnum")
 			default:
@@ -313,4 +316,35 @@ func (a *App) sortSelect(c *ui.Context, key string, value *string, options []str
 		}
 	})
 	return changed
+}
+
+// playingBars is the sign of the song playing in a list: three bars that
+// rise and fall with the music, and rest while it is paused. They are
+// painted about twenty times a second, without the page being built
+// again, and only while a song plays and the window shows them.
+func (a *App) playingBars(c *ui.Context, size float32) {
+	p := a.pal
+	box := ui.Box(c).Size(size, size).Shrink(0)
+	box.Draw(func(g *ui.Painter, r ui.Rect) {
+		playing := a.player.playing()
+		t := float64(time.Now().UnixMilli()%100000) / 1000
+		w := size * 0.2
+		gap := size * 0.11
+		x := r.X + (r.W-(3*w+2*gap))/2
+		for i := 0; i < 3; i++ {
+			h := size * 0.34
+			if playing {
+				h = size * 0.3
+				if animate {
+					h = size * float32(0.3+0.6*(0.5+0.5*math.Sin(t*(5.2+1.9*float64(i))+float64(i)*2.1)))
+				} else {
+					h = size * []float32{0.55, 0.85, 0.65}[i]
+				}
+			}
+			g.Fill(ui.Rect{X: x + float32(i)*(w+gap), Y: r.Y + (r.H+size)/2 - h, W: w, H: h}, p.accent, w/2)
+		}
+		if playing && animate {
+			g.After(50 * time.Millisecond)
+		}
+	})
 }

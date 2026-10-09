@@ -21,39 +21,35 @@ little kept on disk.
 
 ## To do
 
-### Share a song or an album as a picture
-
-- [ ] **Share** in the right-click menu of a song and of an album, making
-      a picture to post on social networks.
-  - [ ] The picture has the cover, the title and the artist's name, and
-        looks clean: generous margins, good type, nothing else.
-  - [ ] A choice of background: white, black, a color of your own, or a
-        blend of the cover's own colors (as the record already draws).
-  - [ ] A preview before it is made, with the background changing as it
-        is chosen.
-  - [ ] Copy the picture to the clipboard, and save it as a PNG.
-  - [ ] *Suggested:* the shapes networks want: square (1080 × 1080),
-        tall for stories (1080 × 1920) and wide for links (1200 × 630).
-  - [ ] *Suggested:* the same from the song playing, in the player's bar
-        and on the record.
-
 ### Quick animations across the app
 
 - [ ] Short, light animations so that the app does not feel bland, none
       of which makes anything wait: a page still shows at once.
   - [ ] Pressing and hovering: buttons, rows, cards and covers answer
-        with a small movement, not only a change of color.
-  - [ ] Pages and panels: the queue, the lyrics, the sidebar and menus
-        slide or fade in; a page changing has a hint of movement.
-  - [ ] Playback: the play button turning into pause, the heart when a
-        song is liked, the cover changing with the song, the bars of the
-        song playing in a list.
+        with a small movement, not only a change of color. *(the play
+        button of a tile now rises in under the pointer; colors already
+        fade; no press movement yet)*
+  - [x] A page changing has a hint of movement: it comes in 8 points up
+        over 150 ms, the page before goes at once. *(measured: no slow
+        frame during navigation with it on that was not there with it off)*
+  - [ ] The queue, the sidebar and pictures slide, collapse and fade in.
+        *(written, and the tests and frame times are clean; not yet seen
+        running, as the screen was locked)*
+  - [x] The bars of the song playing in a list move with the music, rest
+        when it is paused, and are painted twenty times a second only
+        while it plays. *(seen in the app: 127 MB and about 5% CPU while
+        playing with them on screen)*
+  - [ ] The play button turning into pause, the heart when a song is
+        liked.
   - [ ] Lists: a song added to, taken from or dragged in the queue moves
         to its place.
-  - [ ] A setting to turn animations down, following the system's
-        "Reduce motion".
+  - [x] A setting to turn animations down, following the system's
+        "Reduce motion": Settings ▸ Appearance ▸ Animations. *(the read
+        of the system's setting is written for macOS, Windows and Linux;
+        tested on macOS only in that it reads "off" here)*
   - [ ] Measured: still 120 frames a second while they run, and no more
-        memory at rest.
+        memory at rest. *(no slow frames added; the frame rate itself not
+        yet measured)*
 
 ### More audio settings
 
@@ -258,6 +254,21 @@ Each entry is written as:
       click; in the app, a song played while the equalizer was turned on,
       changed and off, kept its place; settings survive a restart. Cost:
       about 22 µs per 1,024 frames, and 0.1% of the CPU while playing.
+- [x] **Share a song or an album as a picture** (2026-10-09): "Share as
+      a Picture…" in the right-click menu of a song, an album and the song
+      in the player's bar. A dialog with a live preview; shapes Square
+      (1080 × 1080), Story (1080 × 1920) and Wide (1200 × 630); white,
+      black, a color of your own (swatches or hex) or a blend of the
+      cover's own colors, always dark enough for white text; text that is
+      dark on light backgrounds; an optional "Aurelia" mark. Copy puts the
+      PNG on the clipboard, Save… writes it. Verified: the pictures were
+      rendered for every shape and background and looked at; tests check
+      the size, the background at the four corners, the cover's pixels,
+      the text colors and a pale cover's blend; right-clicking an album
+      and a song and choosing the item opens the dialog (test through the
+      app's own menus); the clipboard was read back from macOS and holds a
+      1080 × 1080 PNG of the right background. Not tried: the native Save
+      panel (its file writing is the same PNG that was inspected).
 - [x] **Mono, and balance between left and right** (2026-10-09), in
       Settings ▸ Playback. Verified by unit tests of the samples
       (mono of 1 and 0 is 0.5 in both; balance to the right silences the

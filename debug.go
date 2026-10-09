@@ -281,6 +281,66 @@ func (a *App) debug(dir, line string) {
 			}
 			a.chooseOutput("gone-"+arg, arg) // one that is not plugged in
 		})
+	case "motion":
+		// "motion on", "motion reduced" or "motion" for the system's.
+		do(func() {
+			a.settings.Motion = arg
+			a.applyMotion()
+		})
+	case "share":
+		// "share album 3 blend square" opens the dialog on the fourth album
+		// by name; "share song" on the song playing; "share png file.png"
+		// writes the picture, as it would be saved, to the debug directory.
+		do(func() {
+			f := strings.Fields(arg)
+			if len(f) == 0 {
+				return
+			}
+			if f[0] == "save" {
+				a.saveCard()
+				return
+			}
+			if f[0] == "copy" {
+				a.copyCard()
+				return
+			}
+			if f[0] == "png" && len(f) == 2 {
+				if data, err := a.cardPNG(); err == nil {
+					os.WriteFile(filepath.Join(dir, f[1]), data, 0o644)
+				} else {
+					log.Print("share png: ", err)
+				}
+				return
+			}
+			switch f[0] {
+			case "album":
+				n := 0
+				if len(f) > 1 {
+					n, _ = strconv.Atoi(f[1])
+				}
+				if albums := a.albumsBy("Name"); n < len(albums) {
+					a.shareAlbum(albums[n])
+				}
+			case "song":
+				if s := a.player.current(); s != nil {
+					a.shareSong(s)
+				}
+			}
+			for _, w := range f[1:] {
+				switch w {
+				case bgWhite, bgBlack, bgColor, bgBlend:
+					a.share.bg = w
+				case "mark":
+					a.share.mark = true
+				default:
+					for i, cf := range cardFormats {
+						if cf.id == w {
+							a.share.format = i
+						}
+					}
+				}
+			}
+		})
 	case "front":
 		// A covered window paints no frames, so a shot would show an old
 		// one: the window is brought forward.

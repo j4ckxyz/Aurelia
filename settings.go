@@ -114,6 +114,24 @@ func (a *App) settingsPage(c *ui.Context) {
 					}
 				}
 			})
+			a.card(c, func() {
+				a.setting(c, "Animations", "The short movements of pages, panels and pictures. Following the system, Reduce motion turns them off.", func() {
+					names := make([]string, len(motionChoices))
+					for i, m := range motionChoices {
+						names[i] = m.name
+					}
+					at := motionName(a.settings.Motion)
+					if ui.Select(c.Key("motion"), &at, names).Width(170).Label("Animations").Changed() {
+						for _, m := range motionChoices {
+							if m.name == at {
+								a.settings.Motion = m.id
+							}
+						}
+						a.applyMotion()
+						a.saveSettings()
+					}
+				})
+			})
 			for name, why := range a.themes.Errors {
 				ui.Row(c).Gap(8).Children(func() {
 					ui.Icon(c, icon("circle-alert")).Size(14, 14).TextColor(p.warning)

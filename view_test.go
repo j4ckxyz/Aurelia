@@ -34,6 +34,10 @@ func testAppWith(t *testing.T, handler http.Handler) *App {
 	t.Cleanup(srv.Close)
 	dir := t.TempDir()
 	a := newApp(dirs{data: dir, cache: filepath.Join(dir, "cache")}, true)
+	// The tests are of what the pages hold, not of how they come in: a
+	// page that is still moving in is a few points low in its first frame.
+	a.settings.Motion = motionReduced
+	a.applyMotion()
 	// What the app still writes is written before its directory goes.
 	t.Cleanup(a.queueWrites.Wait)
 	// No pictures: a test has no window to hand them to, and would ask

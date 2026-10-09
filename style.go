@@ -82,9 +82,6 @@ var primary = func() ui.Modifiers {
 	return ui.Ctrl
 }()
 
-// fade is how hovers come and go.
-var fade = ui.ElementTransition{Colors: true, Duration: 90 * time.Millisecond}
-
 // iconButton is a button showing an icon alone, named for the tooltip and
 // for assistive technology.
 func (a *App) iconButton(c *ui.Context, name, label string, size, glyph float32) ui.Element {
