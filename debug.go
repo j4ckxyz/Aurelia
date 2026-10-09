@@ -133,6 +133,7 @@ func (a *App) debug(dir, line string) {
 			out += fmt.Sprintf("downloads: %d songs asked, %d here, %d to go, %d failed, offline=%v\n", len(a.downloads.songs), len(a.downloads.done), len(a.downloads.order)+len(a.downloads.active), len(a.downloads.failed), a.offline)
 			u := &a.updates
 			out += fmt.Sprintf("version=%s update: checking=%v installing=%v ready=%q upToDate=%v err=%q\n", appVersion(), u.checking, u.installing, u.ready, u.upToDate, u.err)
+			out += fmt.Sprintf("proxy=%q %s %s\n", a.settings.Proxy, a.connection.status, a.connection.err)
 			out += "system: " + strings.Join(strings.Fields(a.system.describe()), " ") + " (told " + a.told + ")\n"
 		})
 		os.WriteFile(filepath.Join(dir, "state"), []byte(out), 0o644)
@@ -153,6 +154,13 @@ func (a *App) debug(dir, line string) {
 			time.Sleep(9 * time.Millisecond)
 		}
 		log.Printf("scroll %s ends", name)
+	case "proxy":
+		// "proxy socks5://host:1080" reaches the server through a proxy,
+		// "proxy" through none.
+		do(func() {
+			a.connection.proxy = arg
+			a.applyProxy()
+		})
 	case "update":
 		do(func() { a.checkForUpdates(true) })
 	case "restart":

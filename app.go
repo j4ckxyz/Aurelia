@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,13 +79,14 @@ type App struct {
 	scrub       float64
 	volumeDirty bool
 
-	sizes   cacheSizes
-	updates updates
-	login   loginForm
-	search  searchState
-	pages   pageStates
-	lyrics  lyricsState
-	details map[string]*detail // what the server tells of artists, by ID
+	sizes      cacheSizes
+	updates    updates
+	connection connection
+	login      loginForm
+	search     searchState
+	pages      pageStates
+	lyrics     lyricsState
+	details    map[string]*detail // what the server tells of artists, by ID
 
 	queueMu       sync.Mutex     // one writer of the queue's file at a time
 	queueWrites   sync.WaitGroup // the writes not done yet
@@ -99,6 +102,11 @@ func newApp(d dirs, silent bool) *App {
 	a := &App{dirs: d, settings: loadSettings(d), router: ui.NewRouter("/home"), scale: 2, details: map[string]*detail{}, silent: silent}
 	a.router.Transition = ui.TransitionNone // pages show at once
 	a.pages.queueChosen = -1
+	if err := a.setProxy(a.settings.Proxy); err != nil {
+		log.Print("the proxy of the settings: ", err)
+	}
+	a.login.proxy, a.login.proxyShown = a.settings.Proxy, a.settings.Proxy != ""
+	a.connection.proxy = a.settings.Proxy
 	a.themes = theme.NewStore(d.themes())
 	a.lib = library.Empty()
 	a.images = newImageCache(d.images(), filepath.Join(d.downloads(), "art"), 12<<20, int64(a.settings.PictureCacheMB)<<20, a.update)
@@ -173,10 +181,27 @@ func (a *App) toastError(what string, err error) {
 	}
 }
 
+// unreachable reports whether an error is of the network, not of the
+// server: its name was not found, or nothing answered.
+func unreachable(err error) bool {
+	var dns *net.DNSError
+	var op *net.OpError
+	var timeout interface{ Timeout() bool }
+	return errors.As(err, &dns) || errors.As(err, &op) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.As(err, &timeout) && timeout.Timeout()
+}
+
 // friendly words an error for a person.
 func friendly(err error) string {
 	var netErr interface{ Timeout() bool }
+	msg := err.Error()
 	switch {
+	case strings.Contains(msg, "proxyconnect") || strings.Contains(msg, "socks connect") || strings.Contains(msg, "Proxy Authentication Required"):
+		// The proxy itself: not there, or not letting this through.
+		if i := strings.LastIndex(msg, ": "); i >= 0 {
+			msg = msg[i+2:]
+		}
+		return "The proxy did not let the connection through (" + msg + ")."
 	case errors.Is(err, jellyfin.ErrUnauthorized):
 		return "The server refused the sign-in."
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
@@ -220,6 +245,14 @@ func (a *App) signIn() {
 	if f.busy {
 		return
 	}
+	// The proxy of the form carries the sign-in itself.
+	if err := a.setProxy(f.proxy); err != nil {
+		f.err = "Proxy: " + err.Error()
+		return
+	}
+	a.settings.Proxy = strings.TrimSpace(f.proxy)
+	a.connection.proxy = a.settings.Proxy
+	a.saveSettings()
 	f.busy, f.err = true, ""
 	server, user, password := f.server, f.user, f.password
 	deviceID := a.settings.DeviceID
@@ -231,6 +264,12 @@ func (a *App) signIn() {
 			f.busy = false
 			if err != nil {
 				f.err = friendly(err)
+				// A server that cannot be reached at all may be one this
+				// network blocks.
+				if proxy.Load() == nil && unreachable(err) {
+					f.err += " If this network blocks your server, a proxy may reach it."
+					f.proxyShown = true
+				}
 				return
 			}
 			f.password = ""

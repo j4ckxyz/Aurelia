@@ -39,6 +39,9 @@ type Settings struct {
 	// and PictureCacheMB the pictures.
 	AudioCacheMB   int `json:"audioCacheMB"`
 	PictureCacheMB int `json:"pictureCacheMB"`
+	// Proxy is the address of a proxy to reach the network through, as
+	// socks5://host:1080, for networks that block the server; "" is none.
+	Proxy string `json:"proxy,omitempty"`
 	// AutoUpdate installs new versions as they are released.
 	AutoUpdate bool   `json:"autoUpdate"`
 	AlbumSort  string `json:"albumSort,omitempty"`

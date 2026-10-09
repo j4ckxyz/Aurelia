@@ -1,5 +1,12 @@
 # Changes
 
+## 0.1.3
+
+- A proxy, HTTP or SOCKS5, to reach a server that the network blocks: on
+  the sign-in page and in Settings, with a test of the way to the server.
+  Aurelia says what a proxy could read when the server is not at https.
+- Aurelia is under the MIT license.
+
 ## 0.1.2
 
 - The album's cover shows with the song in the system's display of what

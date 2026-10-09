@@ -90,16 +90,11 @@ func newImageCache(dir, pinDir string, maxBytes, maxDisk int64, post func(func()
 	os.MkdirAll(dir, 0o755)
 	ic := &imageCache{
 		dir: dir, pinDir: pinDir, post: post,
-		// A connection for each loader stays open between pictures: the
-		// default keeps two, and the others would connect anew for
-		// every picture of a server without HTTP/2.
-		client: &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			ForceAttemptHTTP2:   true,
-			MaxIdleConnsPerHost: imageLoaders,
-			IdleConnTimeout:     90 * time.Second,
-		}},
-		mem: map[string]*list.Element{}, lru: list.New(), maxBytes: maxBytes,
+		// Over the app's transport, which keeps a connection for each
+		// loader open between pictures, and goes through the proxy of
+		// the settings.
+		client: &http.Client{Timeout: 30 * time.Second},
+		mem:    map[string]*list.Element{}, lru: list.New(), maxBytes: maxBytes,
 		failed: map[string]time.Time{}, pending: map[string]*imageReq{},
 	}
 	ic.cond = sync.NewCond(&ic.mu)

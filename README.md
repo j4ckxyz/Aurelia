@@ -109,6 +109,40 @@ from the `.deb` is updated by installing a newer `.deb` instead.
   make them, and themes as JSON files you can write by hand. Themes made
   for Visual Studio Code, Firefox and Chrome import as they are.
 
+## Behind a network that blocks your server
+
+A network may block your server's address: its name does not resolve, or
+connections to it go nowhere. Aurelia can reach it through a proxy instead,
+HTTP or SOCKS5: **Connect through a proxy** on the sign-in page, or Settings
+▸ Connection, which also tests the way to the server and says how long it
+takes.
+
+```
+socks5://host:1080
+http://user:password@host:8080
+host:8080
+```
+
+Everything then goes through the proxy: signing in, the library, pictures,
+songs and updates. The proxy is asked for the server by its name, so the
+name need not resolve where you are.
+
+- **What the proxy sees.** With a server at `https://`, the proxy carries a
+  connection it cannot read: it learns which server you use and how much
+  you send and receive, nothing more. With a server at `http://`, it can
+  read everything, your password included, and Aurelia says so when you
+  set one.
+- **Which proxy.** One you control is the one to use: `ssh -D 1080
+  you@a-machine-of-yours` makes a SOCKS5 proxy at `socks5://127.0.0.1:1080`
+  out of any computer you can sign in to. Free public proxies exist, in
+  lists that change by the hour; they are slow for music, they come and go,
+  and strangers run them. Aurelia does not look for one for you.
+- **Where it does not help.** A network that also blocks the proxy, or
+  lets through only the sites it knows, blocks this too.
+
+Without the setting, Aurelia follows `HTTPS_PROXY` and `HTTP_PROXY` of the
+environment, as most programs do.
+
 ## Themes
 
 Settings ▸ Appearance lists the themes. **New theme** opens the editor on a
@@ -231,6 +265,7 @@ audio tests a file, and `AURELIA_TEST_DEVICE=1` plays it on the sound card.
 | `player.go` | the queue: order, shuffle, repeat, and what the server is told |
 | `downloads.go` | what is kept for offline |
 | `update.go` | the app's own updates |
+| `proxy.go` | the proxy the app reaches the network through, and the one transport everything uses |
 | `nowplaying_darwin.go`, `nowplaying_linux.go`, `nowplaying_windows.go` | what plays, told to the system: Now Playing, MPRIS, and the System Media Transport Controls |
 | `images.go` | pictures: in memory, on disk, and from the server |
 | `internal/jellyfin` | the server's API |
@@ -254,3 +289,7 @@ Built with [MyGo](https://github.com/egoist/mygo). Icons by
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Aurelia is not affiliated with the Jellyfin project.
+
+## License
+
+[MIT](LICENSE).

@@ -146,6 +146,9 @@ func (a *App) settingsPage(c *ui.Context) {
 				}
 			})
 
+			a.settingsHead(c, "Connection")
+			a.connectionCard(c)
+
 			a.settingsHead(c, "Storage")
 			a.card(c, func() {
 				d := a.downloads

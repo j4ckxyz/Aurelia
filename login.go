@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -9,8 +10,12 @@ import (
 // loginForm is what the sign-in page holds.
 type loginForm struct {
 	server, user, password string
-	busy                   bool
-	err                    string
+	// proxy is the proxy to sign in through, and proxyShown whether its
+	// field shows: most people need none.
+	proxy      string
+	proxyShown bool
+	busy       bool
+	err        string
 }
 
 // loginPage asks for a server and who to sign in as.
@@ -47,6 +52,19 @@ func (a *App) loginPage(c *ui.Context) {
 				pw := field("Password", &f.password, "").Password()
 				ready := f.server != "" && f.user != "" && !f.busy
 				submit := server.Submitted() || user.Submitted() || pw.Submitted()
+				if f.proxyShown {
+					if field("Proxy", &f.proxy, "socks5://host:1080 or http://host:8080").Submitted() {
+						submit = true
+					}
+					ui.Text(c, "For networks that block your server: Aurelia reaches it through this HTTP or SOCKS5 proxy instead. Leave empty for none.").
+						FontSize(12).TextColor(p.muted)
+					if risk := proxyRisk(f.server); risk != "" && strings.TrimSpace(f.proxy) != "" {
+						ui.Row(c).Gap(8).AlignItems(ui.Start).Children(func() {
+							ui.Icon(c, icon("circle-alert")).Size(14, 14).TextColor(p.warning).Margin(1, 0, 0)
+							ui.Text(c, risk).FontSize(12).TextColor(p.muted).Grow(1)
+						})
+					}
+				}
 				b := ui.ButtonBase(c).Height(38).Radius(p.radius).Margin(6, 0, 0).Disabled(!ready).Label("Sign in")
 				switch {
 				case !ready:
@@ -76,6 +94,13 @@ func (a *App) loginPage(c *ui.Context) {
 					ui.Row(c).Gap(8).AlignItems(ui.Start).Padding(10, 12).Radius(p.radius).Background(p.danger.Alpha(0.12)).Children(func() {
 						ui.Icon(c, icon("circle-alert")).Size(15, 15).TextColor(p.danger).Margin(1, 0, 0)
 						ui.Text(c, f.err).TextColor(p.text).Grow(1)
+					})
+				}
+				if !f.proxyShown {
+					ui.Row(c).Justify(ui.Center).Children(func() {
+						if a.textButton(c, "Connect through a proxy").Clicked() {
+							f.proxyShown = true
+						}
 					})
 				}
 			})
