@@ -51,6 +51,13 @@ type Settings struct {
 	SongSort   string `json:"songSort,omitempty"`
 	ArtistSort string `json:"artistSort,omitempty"`
 	QueueOpen  bool   `json:"queueOpen,omitempty"`
+	// HiddenRecent is the albums taken out of "Jump back in", with when:
+	// one played since shows again.
+	HiddenRecent map[string]int64 `json:"hiddenRecent,omitempty"`
+	// SidebarHidden puts the sidebar away, and SidebarW is its width when
+	// the user gave it one.
+	SidebarHidden bool `json:"sidebarHidden,omitempty"`
+	SidebarW      int  `json:"sidebarW,omitempty"`
 	// MiniPinned keeps the small window of the record above the others.
 	MiniPinned bool `json:"miniPinned,omitempty"`
 	// OthersPlaylists shows the playlists other people of the server

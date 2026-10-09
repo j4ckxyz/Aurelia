@@ -25,7 +25,15 @@ func (a *App) playerBar(c *ui.Context) {
 		c.After(time.Second - st.Position%time.Second + 10*time.Millisecond)
 		pl.reportProgress(false)
 	}
-	ui.Row(c).Height(playerH).Shrink(0).Padding(0, 16).Gap(16).Background(p.bar).BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
+	// A narrow window keeps the song and the buttons that play it, and
+	// lets go of the rest by steps.
+	width, _ := c.Size()
+	roomy, tight := width >= 980, width < 700
+	gap := float32(16)
+	if tight {
+		gap = 10
+	}
+	ui.Row(c).Height(playerH).Shrink(0).Padding(0, gap).Gap(gap).Background(p.bar).BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
 		// What plays.
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(12).Children(func() {
 			if song == nil {
@@ -58,15 +66,19 @@ func (a *App) playerBar(c *ui.Context) {
 			if song.Favorite {
 				glyph, label = "heart-fill", "Remove from Favorites"
 			}
-			if a.toggleIcon(c, glyph, label, song.Favorite, 30, 16).Clicked() {
+			if !tight && a.toggleIcon(c, glyph, label, song.Favorite, 30, 16).Clicked() {
 				a.setFavorite(song.ID, &song.Favorite, !song.Favorite)
 			}
 		})
 
 		// The buttons, over the place in the song.
-		ui.Column(c).Grow(1.4).Basis(0).MinWidth(260).MaxWidth(680).Gap(2).AlignItems(ui.Stretch).Children(func() {
+		center := float32(260)
+		if tight {
+			center = 200
+		}
+		ui.Column(c).Grow(1.4).Basis(0).MinWidth(center).MaxWidth(680).Gap(2).AlignItems(ui.Stretch).Children(func() {
 			ui.Row(c).Justify(ui.Center).Gap(8).Children(func() {
-				if a.toggleIcon(c, "shuffle", "Shuffle", a.settings.Shuffle, 32, 16).Clicked() {
+				if !tight && a.toggleIcon(c, "shuffle", "Shuffle", a.settings.Shuffle, 32, 16).Clicked() {
 					pl.setShuffle(!a.settings.Shuffle)
 				}
 				if a.iconButton(c, "skip-back-fill", "Previous", 32, 17).Disabled(song == nil).Clicked() {
@@ -83,7 +95,7 @@ func (a *App) playerBar(c *ui.Context) {
 				case repeatOne:
 					glyph, label = "repeat-1", "Repeat one"
 				}
-				if a.toggleIcon(c, glyph, label, a.settings.Repeat != repeatOff, 32, 16).Clicked() {
+				if !tight && a.toggleIcon(c, glyph, label, a.settings.Repeat != repeatOff, 32, 16).Clicked() {
 					pl.cycleRepeat()
 				}
 			})
@@ -92,23 +104,26 @@ func (a *App) playerBar(c *ui.Context) {
 
 		// The queue, the lyrics and the volume.
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Justify(ui.End).Gap(4).Children(func() {
-			a.deviceButton(c)
+			if !tight {
+				a.deviceButton(c)
+			}
 			if a.iconButton(c, "disc-3", "The record and the lyrics", 32, 16).Disabled(song == nil).Clicked() {
 				a.openStage()
 			}
 			lyrics := a.router.Path() == "/lyrics"
-			if a.toggleIcon(c, "mic-vocal", "Lyrics", lyrics, 32, 16).Clicked() {
+			if !tight && a.toggleIcon(c, "mic-vocal", "Lyrics", lyrics, 32, 16).Clicked() {
 				if lyrics {
 					a.router.Back()
 				} else {
 					a.goTo("/lyrics")
 				}
 			}
-			if a.toggleIcon(c, "list-end", "Queue", a.settings.QueueOpen, 32, 16).Clicked() {
+			// The queue shows beside the page, where there is room for both.
+			if width >= queueMinW && a.toggleIcon(c, "list-end", "Queue", a.settings.QueueOpen, 32, 16).Clicked() {
 				a.settings.QueueOpen = !a.settings.QueueOpen
 				a.saveSettings()
 			}
-			a.volume(c)
+			a.volume(c, roomy)
 		})
 	})
 }
@@ -227,8 +242,9 @@ func (a *App) seekBar(c *ui.Context, song *library.Song, st audio.State) {
 	})
 }
 
-// volume is the volume's button, which mutes, and its slider.
-func (a *App) volume(c *ui.Context) {
+// volume is the volume's button, which mutes, and its slider where the
+// window has room for one.
+func (a *App) volume(c *ui.Context, slider bool) {
 	p := a.pal
 	far := a.player.far
 	v, muted := a.volumeNow()
@@ -248,6 +264,9 @@ func (a *App) volume(c *ui.Context) {
 	}
 	if a.iconButton(c, glyph, label, 32, 16).Clicked() {
 		a.toggleMute()
+	}
+	if !slider {
+		return // the button mutes; the keys and the system set the volume
 	}
 	bar := ui.SliderBase(c.Key("volume"), &v, 0, 1).Width(96).Height(16).Label("Volume").Shrink(0)
 	if bar.Changed() {

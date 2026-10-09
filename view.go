@@ -78,6 +78,11 @@ func (a *App) view(c *ui.Context) {
 		a.toastLayer(c, 16)
 		return
 	}
+	if w, _ := c.Size(); w < narrowW {
+		a.narrow = true
+	} else {
+		a.narrow, a.sidebarPeek = false, false
+	}
 	a.cursor.begin(a.router.Location())
 	root := ui.Column(c).Fill()
 	a.shortcuts(c, root)
@@ -89,7 +94,9 @@ func (a *App) view(c *ui.Context) {
 	a.tellSystem()
 	root.Children(func() {
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-			a.sidebar(c)
+			if a.sidebarShown(c) {
+				a.sidebar(c)
+			}
 			content := ui.Column(c).Grow(1).MinWidth(0)
 			if a.router.Path() == "/home" {
 				// A wash of the accent from the top, which Home scrolls over.
@@ -99,7 +106,7 @@ func (a *App) view(c *ui.Context) {
 				a.topBar(c)
 				a.router.View(c, func(r *ui.Route) { a.route(c, r) })
 			})
-			if a.settings.QueueOpen {
+			if a.queueShown(c) {
 				a.queuePanel(c)
 			}
 		})
@@ -263,14 +270,63 @@ func (a *App) setVolume(v float64) {
 	a.saveSettings()
 }
 
+// The window adapts to its width: under narrowW the sidebar is put away
+// until its button asks for it, under queueMinW the queue has no room
+// beside the page, and the player's bar drops what matters least first.
+const (
+	narrowW    = 760
+	queueMinW  = 920
+	sidebarMin = 170
+	sidebarMax = 380
+	// The least size of the window: a page of two albums across, and the
+	// player's bar.
+	windowMinW = 480
+	windowMinH = 420
+)
+
+// sidebarWidth is the width of the sidebar: the user's, or its own.
+func (a *App) sidebarWidth() float32 {
+	if w := a.settings.SidebarW; w > 0 {
+		return float32(max(sidebarMin, min(sidebarMax, w)))
+	}
+	return sidebarW
+}
+
+// sidebarShown reports whether the sidebar shows: where the user has it
+// in a window with room for it, and when asked for in a narrow one.
+func (a *App) sidebarShown(c *ui.Context) bool {
+	if w, _ := c.Size(); w < narrowW {
+		return a.sidebarPeek
+	}
+	return !a.settings.SidebarHidden
+}
+
+// toggleSidebar puts the sidebar away, or brings it back.
+func (a *App) toggleSidebar() {
+	if a.narrow {
+		a.sidebarPeek = !a.sidebarPeek
+		return
+	}
+	a.settings.SidebarHidden = !a.settings.SidebarHidden
+	a.saveSettings()
+}
+
+// queueShown reports whether the queue shows beside the page.
+func (a *App) queueShown(c *ui.Context) bool {
+	w, _ := c.Size()
+	return a.settings.QueueOpen && w >= queueMinW
+}
+
 // contentWidth is the width pages have, for grids to count their columns.
 func (a *App) contentWidth(c *ui.Context) float32 {
 	w, _ := c.Size()
-	w -= sidebarW
-	if a.settings.QueueOpen {
+	if a.sidebarShown(c) {
+		w -= a.sidebarWidth()
+	}
+	if a.queueShown(c) {
 		w -= queueW
 	}
-	return max(w, 320)
+	return max(w, 280)
 }
 
 // columns is how many tiles fit a row of a page.
@@ -335,13 +391,15 @@ func (a *App) art(c *ui.Context, id, tag string, dip float32, glyph string, over
 func (a *App) sidebar(c *ui.Context) {
 	p := a.pal
 	bar := c.TitleBar()
-	ui.Column(c).Width(sidebarW).Shrink(0).Background(p.sidebar).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
-		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 12, 0, max(bar.Left+4, 12)).Gap(2).DragWindow().Children(func() {
+	ui.Column(c).Width(a.sidebarWidth()).Shrink(0).Background(p.sidebar).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
+		a.sidebarHandle(c)
+		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 10, 0, max(bar.Left+4, 12)).Gap(2).DragWindow().Children(func() {
 			if bar.Left == 0 {
 				ui.Icon(c, icon("logo")).Size(20, 20).TextColor(p.accent)
-				ui.Text(c, "Aurelia").FontWeight(700).FontSize(15).Margin(0, 0, 0, 8)
+				ui.Text(c, "Aurelia").FontWeight(700).FontSize(15).Margin(0, 0, 0, 8).SingleLine().Shrink(1).MinWidth(0)
 			}
 			ui.Spacer(c)
+			a.sidebarButton(c, true)
 			a.historyButton(c, false)
 			a.historyButton(c, true)
 		})
@@ -368,6 +426,45 @@ func (a *App) sidebar(c *ui.Context) {
 			a.navItem(c, "settings", "Settings", "/settings", "/theme/")
 		})
 	})
+}
+
+// sidebarButton puts the sidebar away, or brings it back.
+func (a *App) sidebarButton(c *ui.Context, shown bool) {
+	glyph, label := "panel-left-open", "Show the sidebar"
+	if shown {
+		glyph, label = "panel-left-close", "Hide the sidebar"
+	}
+	if a.iconButton(c, glyph, label, 30, 16).Clicked() {
+		a.toggleSidebar()
+	}
+}
+
+// sidebarHandle is the edge of the sidebar, which the pointer drags to
+// make it wider or narrower; a double click gives it its own width back.
+func (a *App) sidebarHandle(c *ui.Context) {
+	h := ui.Box(c).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Right(-3).Width(7).HeightPercent(100).Cursor(ui.CursorResizeColumn).Label("Resize the sidebar")
+	if h.Hovered() || h.Pressed() {
+		h.Children(func() {
+			ui.Box(c).Width(2).HeightPercent(100).Margin(0, 0, 0, 2).Background(a.pal.accent.Alpha(0.7))
+		})
+	}
+	switch dx, _, dragged := h.Dragged(); {
+	case h.DoubleClicked():
+		a.settings.SidebarW = 0
+		a.saveSettings()
+	case dragged && dx != 0:
+		// The width follows the pointer, not the sum of its steps, which
+		// would drift once it is past the least or the most.
+		a.sidebarDrag += dx
+		a.settings.SidebarW = int(max(sidebarMin, min(sidebarMax, a.sidebarFrom+a.sidebarDrag)))
+		a.sidebarDirty = true
+	case !h.Pressed():
+		a.sidebarFrom, a.sidebarDrag = a.sidebarWidth(), 0
+		if a.sidebarDirty {
+			a.sidebarDirty = false
+			a.saveSettings()
+		}
+	}
 }
 
 // historyButton goes back or forward through the pages shown; a right
@@ -424,6 +521,7 @@ func (a *App) navItem(c *ui.Context, glyph, label, path, under string) {
 		} else {
 			a.goTo(path)
 		}
+		a.sidebarPeek = false // in a narrow window it was only asked for
 	}
 }
 
@@ -459,7 +557,19 @@ func (a *App) syncStatus(c *ui.Context) {
 // topBar holds the search field, over the pages.
 func (a *App) topBar(c *ui.Context) {
 	p := a.pal
-	ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 16, 0, pagePad).Gap(8).DragWindow().Children(func() {
+	left := float32(pagePad)
+	away := !a.sidebarShown(c)
+	if away {
+		left = max(c.TitleBar().Left+4, 12)
+	}
+	ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 16, 0, left).Gap(8).DragWindow().Children(func() {
+		if away {
+			ui.Row(c).Gap(2).Shrink(0).Margin(0, 4, 0, 0).Children(func() {
+				a.sidebarButton(c, false)
+				a.historyButton(c, false)
+				a.historyButton(c, true)
+			})
+		}
 		a.search.field(a, c)
 		ui.Spacer(c)
 		if a.offline {

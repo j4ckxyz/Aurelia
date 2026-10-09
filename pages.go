@@ -132,10 +132,10 @@ func greeting() string {
 	return "Good evening"
 }
 
-// playedAlbums returns the albums played last, the last first, and those
-// played most.
-func (a *App) playedAlbums() (recent, most []*library.Album) {
-	last := map[*library.Album]int64{}
+// playedAlbums returns the albums played last, the last first, those
+// played most, and when each was last played.
+func (a *App) playedAlbums() (recent, most []*library.Album, last map[*library.Album]int64) {
+	last = map[*library.Album]int64{}
 	plays := map[*library.Album]int{}
 	for i := range a.lib.Songs {
 		s := &a.lib.Songs[i]
@@ -165,7 +165,7 @@ func (a *App) playedAlbums() (recent, most []*library.Album) {
 	slices.SortFunc(most, func(x, y *library.Album) int {
 		return cmp.Or(cmp.Compare(plays[y], plays[x]), cmp.Compare(x.SortKey, y.SortKey))
 	})
-	return recent[:min(len(recent), 24)], most[:min(len(most), 24)]
+	return recent[:min(len(recent), 40)], most[:min(len(most), 24)], last
 }
 
 var albumSorts = []string{"Name", "Artist", "Year", "Recently Added"}
@@ -424,24 +424,29 @@ type hero struct {
 
 func (a *App) hero(c *ui.Context, h hero) {
 	p := a.pal
-	ui.Row(c).Padding(10, pagePad, 22).Gap(26).AlignItems(ui.End).Children(func() {
-		pic := a.art(c, h.id, h.tag, heroArt, h.glyph, nil).Size(heroArt, heroArt).Shadow(0, 10, 30, 0, p.shadow)
+	// As large as a narrow page lets it be.
+	size, gap := float32(heroArt), float32(26)
+	if a.contentWidth(c) < 620 {
+		size, gap = 132, 18
+	}
+	ui.Row(c).Padding(10, pagePad, 22).Gap(gap).AlignItems(ui.End).Children(func() {
+		pic := a.art(c, h.id, h.tag, heroArt, h.glyph, nil).Size(size, size).Shrink(0).Shadow(0, 10, 30, 0, p.shadow)
 		if h.round {
-			pic.Radius(heroArt / 2)
+			pic.Radius(size / 2)
 		} else {
 			pic.Radius(p.radius + 2)
 		}
 		ui.Column(c).Grow(1).MinWidth(0).Gap(8).Children(func() {
 			ui.Text(c, strings.ToUpper(h.kind)).FontSize(11).FontWeight(600).LetterSpacing(1).TextColor(p.muted)
-			size := float32(40)
-			if len(h.title) > 34 {
-				size = 28
+			font := float32(40)
+			if len(h.title) > 34 || size < heroArt {
+				font = 28
 			}
-			ui.Text(c, h.title).FontSize(size).FontWeight(800).MaxLines(2).LineHeight(1.12)
+			ui.Text(c, h.title).FontSize(font).FontWeight(800).MaxLines(2).LineHeight(1.12)
 			if h.meta != nil {
 				ui.Row(c).Gap(6).Wrap().Children(h.meta)
 			}
-			ui.Row(c).Gap(10).Margin(10, 0, 0).Children(func() {
+			ui.Row(c).Gap(10).Margin(10, 0, 0).Wrap().Children(func() {
 				if h.play != nil && a.pillButton(c, "play-fill", "Play", true).Clicked() {
 					h.play()
 				}

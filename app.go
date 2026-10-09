@@ -81,6 +81,14 @@ type App struct {
 	scrub       float64
 	volumeDirty bool
 
+	// hiddenGen counts the albums taken out of "Jump back in".
+	hiddenGen int
+	// narrow is set while the window is too narrow to keep the sidebar,
+	// and sidebarPeek shows it there all the same. The rest is of its
+	// edge being dragged.
+	narrow, sidebarPeek      bool
+	sidebarFrom, sidebarDrag float32
+	sidebarDirty             bool
 	// stage is the full screen of the song playing.
 	stage stage
 	// remote is the other devices of the user, to play on.

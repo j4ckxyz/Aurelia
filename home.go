@@ -23,22 +23,48 @@ func (a *App) homePage(c *ui.Context) {
 		return
 	}
 	cols := a.columns(c)
-	quickCols := max(2, min(4, int(a.contentWidth(c)-2*pagePad)/quickMin))
-	rows := a.rows(c, "/home", fmt.Sprint(quickCols, a.settings.OthersPlaylists), func(add func(func(c *ui.Context))) {
+	quickCols := max(1, min(4, int(a.contentWidth(c)-2*pagePad)/quickMin))
+	rows := a.rows(c, "/home", fmt.Sprint(quickCols, a.settings.OthersPlaylists, a.hiddenGen, a.player.current() != nil), func(add func(func(c *ui.Context))) {
 		add(a.homeHead)
-		played, most := a.playedAlbums()
+		played, most := a.recentAlbums()
 
-		// Two rows of what was played last, small.
-		if quick := played[:min(len(played), 2*quickCols)]; len(quick) > 0 {
+		// Two rows of small cards: the song to go on with first, then the
+		// albums played last. Whether there is a song is asked as the
+		// rows are built, for the queue changes without them.
+		if len(played) > 0 || a.player.current() != nil {
 			a.section(add, "Jump back in", nil)
-			for start := 0; start < len(quick); start += quickCols {
-				row := quick[start:min(len(quick), start+quickCols)]
+			for line := 0; line < 2; line++ {
 				add(func(c *ui.Context) {
+					// The album of the song is the song's card.
+					song := a.player.current()
+					room := 2 * quickCols
+					if song != nil {
+						room--
+					}
+					albums := make([]*library.Album, 0, room)
+					for _, al := range played {
+						if (song == nil || al.ID != song.AlbumID) && len(albums) < room {
+							albums = append(albums, al)
+						}
+					}
+					cards := len(albums)
+					if song != nil {
+						cards++
+					}
+					first := line * quickCols
+					if first >= cards {
+						return
+					}
 					ui.Row(c).Padding(0, pagePad, 10).Gap(10).Children(func() {
-						for i := 0; i < quickCols; i++ {
-							if i < len(row) {
-								a.quickCard(c, row[i])
-							} else {
+						for i := first; i < first+quickCols; i++ {
+							switch {
+							case i == 0 && song != nil:
+								a.continueCard(c, song)
+							case i < cards && song != nil:
+								a.quickCard(c, albums[i-1])
+							case i < cards:
+								a.quickCard(c, albums[i])
+							default:
 								ui.Box(c).Grow(1).Basis(0).MinWidth(0)
 							}
 						}
@@ -95,86 +121,82 @@ func (a *App) homePage(c *ui.Context) {
 	a.list(c, rows)
 }
 
-// homeHead is the top of Home: the greeting, and the song to go on with.
-// The wash of the theme's accent behind it is the window's (view).
+// homeHead is the top of Home: the greeting. The wash of the theme's
+// accent behind it is the window's (view).
 func (a *App) homeHead(c *ui.Context) {
 	p := a.pal
-	ui.Column(c).Children(func() {
-		ui.Column(c).Padding(14, pagePad, 14).Gap(4).Children(func() {
-			ui.Text(c, greeting()).FontSize(32).FontWeight(800).SingleLine()
-			ui.Text(c, time.Now().Format("Monday, 2 January")).TextColor(p.muted).SingleLine()
-		})
-		a.continueCard(c)
+	ui.Column(c).Padding(14, pagePad, 6).Gap(4).Children(func() {
+		ui.Text(c, greeting()).FontSize(32).FontWeight(800).SingleLine()
+		ui.Text(c, time.Now().Format("Monday, 2 January")).TextColor(p.muted).SingleLine()
 	})
 }
 
-// continueCard is the song that was playing, with how far it is, to go
-// on with at a click: the queue of the last run, or what plays now.
-func (a *App) continueCard(c *ui.Context) {
+// quickH is the height of a card of "Jump back in".
+const quickH = 62
+
+// continueCard is the song of the queue among the cards of "Jump back
+// in", to go on with: as small as an album's, with a button that plays
+// it on and a line along its foot that tells how far it is.
+func (a *App) continueCard(c *ui.Context, song *library.Song) {
 	p := a.pal
 	pl := a.player
-	song := pl.current()
-	if song == nil {
-		return
-	}
 	st := pl.state()
 	playing := pl.playing()
 	if playing {
-		c.After(500 * time.Millisecond) // the time moves
+		c.After(time.Second) // the line moves
 	}
-	const artSize = 132
-	ui.Row(c).Margin(2, pagePad, 8).Padding(16).Gap(22).Radius(p.radius+8).Background(p.surface.Alpha(0.78)).Border(1, p.border).
-		Shadow(0, 12, 32, 0, p.shadow).Children(func() {
-		a.art(c, song.ImageItem, song.ImageTag, artSize, "music", nil).Size(artSize, artSize).Radius(p.radius+2).Shadow(0, 6, 18, 0, p.shadow)
-		ui.Column(c).Grow(1).MinWidth(0).Gap(5).Children(func() {
-			label := "CONTINUE PLAYING"
+	b := ui.ButtonBase(c.Key("continue")).Row().Grow(1).Basis(0).MinWidth(0).Height(quickH).Padding(0).Gap(12).Radius(p.radius+2).
+		Justify(ui.Start).Background(p.surface).Border(1, p.accent.Alpha(0.45)).Cursor(ui.CursorPointer).Label("Continue " + song.Name).Clip()
+	if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Transition(fade)
+	toggled := false
+	b.Children(func() {
+		a.art(c, song.ImageItem, song.ImageTag, quickH, "music", nil).Size(quickH, quickH).Shrink(0)
+		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+			ui.Text(c, song.Name).FontWeight(600).SingleLine()
+			what := "Continue"
 			if playing {
-				label = "PLAYING NOW"
+				what = "Playing"
 			}
-			ui.Text(c, label).FontSize(11).FontWeight(700).LetterSpacing(1).TextColor(p.accent).SingleLine()
-			ui.Text(c, song.Name).FontSize(24).FontWeight(800).SingleLine()
-			from := song.Artist
-			if song.Album != "" {
-				from += " · " + song.Album
-			}
-			ui.Text(c, from).TextColor(p.muted).SingleLine()
-
-			// How far the song is.
-			frac := float32(0)
-			if st.Duration > 0 {
-				frac = float32(max(0, min(1, float64(st.Position)/float64(st.Duration))))
-			}
-			ui.Row(c).Gap(10).Margin(8, 0, 0).Children(func() {
-				ui.Text(c, clock(st.Position)).FontSize(11).TextColor(p.muted).FontFeatures("tnum").Shrink(0)
-				ui.Box(c).Grow(1).Height(4).Radius(2).Background(p.hover).Children(func() {
-					ui.Box(c).WidthPercent(100 * frac).Height(4).Radius(2).Background(p.accent)
-				})
-				ui.Text(c, clock(st.Duration)).FontSize(11).TextColor(p.muted).FontFeatures("tnum").Shrink(0)
-			})
-			ui.Row(c).Gap(10).Margin(8, 0, 0).Children(func() {
-				glyph, name := "play-fill", "Resume"
-				if playing {
-					glyph, name = "pause-fill", "Pause"
-				}
-				if a.pillButton(c, glyph, name, true).Clicked() {
-					pl.toggle()
-				}
-				if song.AlbumID != "" && a.pillButton(c, "disc-3", "Go to album", false).Clicked() {
-					a.goTo("/album/" + song.AlbumID)
-				}
-				if after := len(pl.queue) - pl.index - 1; after > 0 {
-					ui.Text(c, count(after, "more song", "more songs")+" in the queue").FontSize(12).TextColor(p.muted).SingleLine().Margin(0, 0, 0, 6)
-				}
-			})
+			ui.Text(c, what+" · "+clock(st.Position)+" of "+clock(st.Duration)).FontSize(12).TextColor(p.accent).SingleLine().FontFeatures("tnum")
 		})
+		glyph, label := "play-fill", "Resume"
+		if playing {
+			glyph, label = "pause-fill", "Pause"
+		}
+		pb := ui.ButtonBase(c).Size(36, 36).Radius(18).Margin(0, 12, 0, 0).Shrink(0).Background(p.accent).Label(label).Tooltip(label).Cursor(ui.CursorPointer)
+		if pb.Hovered() {
+			pb.Background(p.accentHover)
+		}
+		pb.Children(func() { ui.Icon(c, icon(glyph)).Size(15, 15).TextColor(p.onAcc) })
+		toggled = pb.Clicked()
+		// How far the song is, along the foot.
+		if st.Duration > 0 {
+			frac := float32(max(0, min(1, float64(st.Position)/float64(st.Duration))))
+			ui.Box(c).Attach(ui.AnchorBottomLeft, ui.AnchorBottomLeft).WidthPercent(100 * frac).Height(2).Background(p.accent)
+		}
 	})
+	open := func() {
+		if song.AlbumID != "" {
+			a.goTo("/album/" + song.AlbumID)
+		}
+	}
+	a.cursorItem(b, open)
+	switch {
+	case toggled:
+		pl.toggle()
+	case b.Clicked():
+		open()
+	}
 }
 
 // quickCard is an album in a row of "Jump back in": its picture, its
 // name, and a button to play it under the pointer.
 func (a *App) quickCard(c *ui.Context, al *library.Album) {
 	p := a.pal
-	const h = 62
+	const h = quickH
 	b := ui.ButtonBase(c.Key("quick-" + al.ID)).Row().Grow(1).Basis(0).MinWidth(0).Height(h).Padding(0).Gap(12).Radius(p.radius + 2).
 		Justify(ui.Start).Background(p.surface).Cursor(ui.CursorPointer).Label(al.Name).Clip()
 	hovered := b.Hovered()
@@ -201,7 +223,13 @@ func (a *App) quickCard(c *ui.Context, al *library.Album) {
 			played = pb.Clicked()
 		}
 	})
-	b.ContextMenu(func(m *ui.Menu) { a.albumMenu(m, al) })
+	b.ContextMenu(func(m *ui.Menu) {
+		if m.Item("Remove from Jump back in").Chosen() {
+			a.hideRecent(al)
+		}
+		m.Separator()
+		a.albumMenu(m, al)
+	})
 	open := func() { a.goTo("/album/" + al.ID) }
 	a.cursorItem(b, open)
 	switch {
@@ -245,4 +273,28 @@ func (a *App) topArtists() []*library.Artist {
 	})
 	s.key, s.list = key, list[:min(len(list), 24)]
 	return s.list
+}
+
+// recentAlbums returns the albums played last, without those taken out
+// of "Jump back in" since they were last played, and those played most.
+func (a *App) recentAlbums() (recent, most []*library.Album) {
+	all, most, last := a.playedAlbums()
+	for _, al := range all {
+		if at, hidden := a.settings.HiddenRecent[al.ID]; hidden && last[al] <= at {
+			continue
+		}
+		recent = append(recent, al)
+	}
+	return recent, most
+}
+
+// hideRecent takes an album out of "Jump back in", until it is played
+// again.
+func (a *App) hideRecent(al *library.Album) {
+	if a.settings.HiddenRecent == nil {
+		a.settings.HiddenRecent = map[string]int64{}
+	}
+	a.settings.HiddenRecent[al.ID] = time.Now().Unix()
+	a.hiddenGen++
+	a.saveSettings()
 }

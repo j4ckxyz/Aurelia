@@ -717,30 +717,54 @@ func TestOthersPlaylists(t *testing.T) {
 	wantTexts(t, tt, "Road trip", "Somebody's mix", "2 playlists")
 }
 
-// Home opens with the song of the queue, to go on with, and with what
-// was played lately.
+// Home has the song of the queue among its small cards, to go on with,
+// and the albums played last, which can be taken out of it.
 func TestHomeContinues(t *testing.T) {
 	a := testApp(t)
 	tt := ui.NewTester(a.view, 1240, 900)
 	tt.Frame()
-	if tt.HasText("CONTINUE PLAYING") {
-		t.Error("something to continue, with an empty queue")
+	if tt.HasText("Jump back in") {
+		t.Error("something to go back to, with nothing played and an empty queue")
 	}
 	wantTexts(t, tt, "Recently added", "Your top artists", "Your playlists")
 	// A queue that came back from the last run: nothing plays yet.
 	a.player.restore(a.lib.AlbumSongs("al1"), 1, 42*time.Second)
 	tt.Frame()
-	wantTexts(t, tt, "CONTINUE PLAYING", "Perfect", "0:42", "Resume")
+	wantTexts(t, tt, "Jump back in", "Perfect", "Continue · 0:42 of 4:23", "Resume")
 	// And what plays now, with the button to pause it.
 	a.player.play(a.lib.AlbumSongs("al1"), 0)
 	tt.Frame()
-	wantTexts(t, tt, "PLAYING NOW", "Shape of You", "1 more song in the queue")
+	wantTexts(t, tt, "Shape of You", "Playing · 0:00 of 3:53")
 	click(t, tt, "Pause")
 	tt.Frame()
 	if a.player.playing() {
 		t.Error("the card's button did not pause")
 	}
-	wantTexts(t, tt, "CONTINUE PLAYING", "Resume")
+	wantTexts(t, tt, "Resume")
+
+	// An album played lately is there until it is taken out, and again
+	// once it is played again.
+	a.lib.Song("s3").LastPlayed = time.Now().Add(-time.Hour).Unix()
+	a.favGen++
+	tt.Frame()
+	if recent, _ := a.recentAlbums(); len(recent) != 1 || recent[0].ID != "al2" {
+		t.Fatalf("the albums played lately: %v", recent)
+	}
+	if err := tt.RightClick("Lemonade"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Remove from Jump back in"); err != nil {
+		t.Fatalf("%v; the menu: %q", err, tt.Menu())
+	}
+	tt.Frame()
+	if recent, _ := a.recentAlbums(); len(recent) != 0 {
+		t.Errorf("after taking it out: %v", recent)
+	}
+	a.lib.Song("s3").LastPlayed = time.Now().Add(time.Minute).Unix()
+	a.favGen++
+	if recent, _ := a.recentAlbums(); len(recent) != 1 {
+		t.Errorf("played again, it is not back: %v", recent)
+	}
 }
 
 // A version found as the app opens is offered in place of the app, with
@@ -800,5 +824,47 @@ func TestStage(t *testing.T) {
 	tt.Frame()
 	if a.stage.on || !tt.HasText("Albums") {
 		t.Errorf("after Escape: on %v", a.stage.on)
+	}
+}
+
+// A narrow window puts the sidebar away and keeps what plays; its button
+// brings the sidebar back, as it puts it away in a wide one.
+func TestNarrowWindow(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, windowMinW, windowMinH)
+	a.player.play(a.lib.AlbumSongs("al1"), 0)
+	tt.Frame()
+	if tt.HasText("PLAYLISTS") || tt.HasText("Shuffle") || tt.HasText("Volume") {
+		t.Errorf("the smallest window shows what it has no room for: %q", tt.Texts())
+	}
+	wantTexts(t, tt, "Show the sidebar", "Back", "Search", "Pause", "Next", "The record and the lyrics")
+	click(t, tt, "Show the sidebar")
+	tt.Frame()
+	wantTexts(t, tt, "PLAYLISTS", "Albums")
+	click(t, tt, "Albums")
+	tt.Frame()
+	tt.Frame()
+	if a.router.Path() != "/albums" || tt.HasText("PLAYLISTS") {
+		t.Errorf("after choosing a page: at %s, the sidebar still shows %v", a.router.Path(), tt.HasText("PLAYLISTS"))
+	}
+	wantTexts(t, tt, "Divide", "Lemonade")
+	// Wide again, the sidebar is back, and stays away when asked.
+	tt.SetSize(1240, 800)
+	tt.Frame()
+	wantTexts(t, tt, "PLAYLISTS", "Shuffle", "Volume", "Hide the sidebar")
+	tt.Key(primary, ui.KeyB)
+	tt.Frame()
+	if tt.HasText("PLAYLISTS") || !a.settings.SidebarHidden {
+		t.Error("Command+B did not put the sidebar away")
+	}
+	click(t, tt, "Show the sidebar")
+	tt.Frame()
+	wantTexts(t, tt, "PLAYLISTS")
+	if a.sidebarWidth() != sidebarW {
+		t.Errorf("the sidebar is %v wide", a.sidebarWidth())
+	}
+	a.settings.SidebarW = 9999
+	if a.sidebarWidth() != sidebarMax {
+		t.Errorf("a width past the most gives %v", a.sidebarWidth())
 	}
 }

@@ -39,7 +39,7 @@ func (s *searchState) follow(a *App) {
 
 // field builds the search field, which searches as its text changes.
 func (s *searchState) field(a *App, c *ui.Context) {
-	f := ui.SearchField(c.Key("search"), &s.query).Width(320).Radius(17).Label("Search").Placeholder("Search artists, albums and songs")
+	f := ui.SearchField(c.Key("search"), &s.query).Grow(1).Basis(0).MinWidth(110).MaxWidth(320).Radius(17).Label("Search").Placeholder("Search artists, albums and songs")
 	if s.focus {
 		f.Focus()
 		s.focus = false
