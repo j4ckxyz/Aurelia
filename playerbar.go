@@ -93,6 +93,9 @@ func (a *App) playerBar(c *ui.Context) {
 		// The queue, the lyrics and the volume.
 		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Justify(ui.End).Gap(4).Children(func() {
 			a.deviceButton(c)
+			if a.iconButton(c, "disc-3", "The record and the lyrics", 32, 16).Disabled(song == nil).Clicked() {
+				a.openStage()
+			}
 			lyrics := a.router.Path() == "/lyrics"
 			if a.toggleIcon(c, "mic-vocal", "Lyrics", lyrics, 32, 16).Clicked() {
 				if lyrics {

@@ -34,79 +34,103 @@ const move = ui.Alt | ui.Shift // the modifiers of the keys that go to a page
 func page(path string) func(a *App) { return func(a *App) { a.goTo(path) } }
 
 // commands are the app's, in the order the page of shortcuts lists them.
-var commands = []command{
-	{id: "toggle", group: "Playback", label: "Play or pause", keys: []chord{{0, ui.KeySpace}}, menu: "Playback",
-		run: func(a *App) { a.player.toggle() }},
-	{id: "next", group: "Playback", label: "Next song", keys: []chord{{primary | ui.Shift, ui.KeyRight}}, menu: "Playback",
-		run: func(a *App) { a.player.skip() }},
-	{id: "previous", group: "Playback", label: "Previous song", keys: []chord{{primary | ui.Shift, ui.KeyLeft}}, menu: "Playback",
-		run: func(a *App) { a.player.previous() }},
-	{id: "forward", group: "Playback", label: "Forward 5 seconds", keys: []chord{{ui.Shift, ui.KeyRight}},
-		run: func(a *App) { a.seekBy(5 * time.Second) }},
-	{id: "rewind", group: "Playback", label: "Back 5 seconds", keys: []chord{{ui.Shift, ui.KeyLeft}},
-		run: func(a *App) { a.seekBy(-5 * time.Second) }},
-	{id: "louder", group: "Playback", label: "Volume up", keys: []chord{{primary, ui.KeyUp}}, menu: "Playback",
-		run: func(a *App) { a.setVolume(a.settings.Volume + 0.05) }},
-	{id: "quieter", group: "Playback", label: "Volume down", keys: []chord{{primary, ui.KeyDown}}, menu: "Playback",
-		run: func(a *App) { a.setVolume(a.settings.Volume - 0.05) }},
-	{id: "mute", group: "Playback", label: "Mute", keys: []chord{{primary | ui.Shift, ui.KeyDown}, {0, ui.KeyM}}, menu: "Playback",
-		run: func(a *App) { a.toggleMute() }},
-	{id: "loudest", group: "Playback", label: "Full volume", keys: []chord{{primary | ui.Shift, ui.KeyUp}},
-		run: func(a *App) { a.setVolume(1) }},
-	{id: "shuffle", group: "Playback", label: "Shuffle", keys: []chord{{primary, ui.KeyS}}, menu: "Playback",
-		run: func(a *App) { a.player.setShuffle(!a.settings.Shuffle) }},
-	{id: "repeat", group: "Playback", label: "Repeat", keys: []chord{{primary, ui.KeyR}}, menu: "Playback",
-		run: func(a *App) { a.player.cycleRepeat() }},
-	{id: "like", group: "Playback", label: "Add the song playing to Favorites, or remove it", keys: []chord{{move, ui.KeyB}}, menu: "Playback",
-		run: func(a *App) {
-			if s := a.player.current(); s != nil {
-				a.setFavorite(s.ID, &s.Favorite, !s.Favorite)
-			}
-		}},
+// They are set as the program starts, not where they are declared: some
+// of what they do leads back to them.
+var commands []command
 
-	{id: "back", group: "Getting around", label: "Back", keys: []chord{{primary, ui.KeyLeft}, {primary, ui.KeyBracketLeft}, {ui.Alt, ui.KeyLeft}}, menu: "View",
-		run: func(a *App) { a.router.Back() }},
-	{id: "onward", group: "Getting around", label: "Forward", keys: []chord{{primary, ui.KeyRight}, {primary, ui.KeyBracketRight}, {ui.Alt, ui.KeyRight}}, menu: "View",
-		run: func(a *App) { a.router.Forward() }},
-	{id: "search", group: "Getting around", label: "Search", keys: []chord{{primary, ui.KeyK}, {primary, ui.KeyL}, {primary, ui.KeyF}, {0, ui.KeySlash}}, menu: "View",
-		run: func(a *App) { a.search.focus = true }},
-	{id: "home", group: "Getting around", label: "Home", keys: []chord{{move, ui.KeyH}, {primary, ui.Key1}}, menu: "View", run: page("/home")},
-	{id: "albums", group: "Getting around", label: "Albums", keys: []chord{{move, ui.Key4}, {primary, ui.Key2}}, menu: "View", run: page("/albums")},
-	{id: "artists", group: "Getting around", label: "Artists", keys: []chord{{move, ui.Key3}, {primary, ui.Key3}}, menu: "View", run: page("/artists")},
-	{id: "songs", group: "Getting around", label: "Songs", keys: []chord{{move, ui.Key2}, {primary, ui.Key4}}, menu: "View", run: page("/songs")},
-	{id: "favorites", group: "Getting around", label: "Favorites", keys: []chord{{move, ui.KeyS}, {primary, ui.Key5}}, menu: "View", run: page("/favorites")},
-	{id: "playlists", group: "Getting around", label: "Playlists", keys: []chord{{move, ui.Key1}, {primary, ui.Key6}}, menu: "View", run: page("/playlists")},
-	{id: "downloads", group: "Getting around", label: "Downloads", keys: []chord{{move, ui.KeyD}}, menu: "View", run: page("/downloads")},
-	{id: "playing", group: "Getting around", label: "The album of the song playing", keys: []chord{{move, ui.KeyJ}}, menu: "View",
-		run: func(a *App) {
-			if s := a.player.current(); s != nil && s.AlbumID != "" {
-				a.goTo("/album/" + s.AlbumID)
-			}
-		}},
-	{id: "queue", group: "Getting around", label: "Show or hide the queue", keys: []chord{{move, ui.KeyQ}}, menu: "View",
-		run: func(a *App) {
-			a.settings.QueueOpen = !a.settings.QueueOpen
-			a.saveSettings()
-		}},
-	{id: "lyrics", group: "Getting around", label: "Lyrics", keys: []chord{{move, ui.KeyL}}, menu: "View",
-		run: func(a *App) {
-			if a.router.Path() == "/lyrics" {
-				a.router.Back()
-			} else {
-				a.goTo("/lyrics")
-			}
-		}},
-	{id: "settings", group: "Getting around", label: "Settings", keys: []chord{{primary, ui.KeyComma}}, menu: "View", run: page("/settings")},
-	{id: "shortcuts", group: "Getting around", label: "Keyboard shortcuts", keys: []chord{{primary, ui.KeySlash}, {ui.Shift, ui.KeySlash}}, menu: "View", run: page("/shortcuts")},
-	{id: "sync", group: "Getting around", label: "Update the library", keys: []chord{{primary | ui.Shift, ui.KeyR}}, menu: "Library",
-		run: func(a *App) { a.sync() }},
+func init() {
+	commands = []command{
+		{id: "toggle", group: "Playback", label: "Play or pause", keys: []chord{{0, ui.KeySpace}}, menu: "Playback",
+			run: func(a *App) { a.player.toggle() }},
+		{id: "next", group: "Playback", label: "Next song", keys: []chord{{primary | ui.Shift, ui.KeyRight}}, menu: "Playback",
+			run: func(a *App) { a.player.skip() }},
+		{id: "previous", group: "Playback", label: "Previous song", keys: []chord{{primary | ui.Shift, ui.KeyLeft}}, menu: "Playback",
+			run: func(a *App) { a.player.previous() }},
+		{id: "forward", group: "Playback", label: "Forward 5 seconds", keys: []chord{{ui.Shift, ui.KeyRight}},
+			run: func(a *App) { a.seekBy(5 * time.Second) }},
+		{id: "rewind", group: "Playback", label: "Back 5 seconds", keys: []chord{{ui.Shift, ui.KeyLeft}},
+			run: func(a *App) { a.seekBy(-5 * time.Second) }},
+		{id: "louder", group: "Playback", label: "Volume up", keys: []chord{{primary, ui.KeyUp}}, menu: "Playback",
+			run: func(a *App) { a.setVolume(a.settings.Volume + 0.05) }},
+		{id: "quieter", group: "Playback", label: "Volume down", keys: []chord{{primary, ui.KeyDown}}, menu: "Playback",
+			run: func(a *App) { a.setVolume(a.settings.Volume - 0.05) }},
+		{id: "mute", group: "Playback", label: "Mute", keys: []chord{{primary | ui.Shift, ui.KeyDown}, {0, ui.KeyM}}, menu: "Playback",
+			run: func(a *App) { a.toggleMute() }},
+		{id: "loudest", group: "Playback", label: "Full volume", keys: []chord{{primary | ui.Shift, ui.KeyUp}},
+			run: func(a *App) { a.setVolume(1) }},
+		{id: "shuffle", group: "Playback", label: "Shuffle", keys: []chord{{primary, ui.KeyS}}, menu: "Playback",
+			run: func(a *App) { a.player.setShuffle(!a.settings.Shuffle) }},
+		{id: "repeat", group: "Playback", label: "Repeat", keys: []chord{{primary, ui.KeyR}}, menu: "Playback",
+			run: func(a *App) { a.player.cycleRepeat() }},
+		{id: "like", group: "Playback", label: "Add the song playing to Favorites, or remove it", keys: []chord{{move, ui.KeyB}}, menu: "Playback",
+			run: func(a *App) {
+				if s := a.player.current(); s != nil {
+					a.setFavorite(s.ID, &s.Favorite, !s.Favorite)
+				}
+			}},
 
-	{id: "down", group: "On a page", label: "The next item, or the one below", keys: []chord{{0, ui.KeyJ}}, run: func(a *App) { a.cursor.step(0, 1) }},
-	{id: "up", group: "On a page", label: "The item before, or the one above", keys: []chord{{0, ui.KeyK}}, run: func(a *App) { a.cursor.step(0, -1) }},
-	{id: "left", group: "On a page", label: "The item to the left", keys: []chord{{0, ui.KeyH}}, run: func(a *App) { a.cursor.step(-1, 0) }},
-	{id: "right", group: "On a page", label: "The item to the right", keys: []chord{{0, ui.KeyL}}, run: func(a *App) { a.cursor.step(1, 0) }},
-	{id: "open", group: "On a page", label: "Open the item, or play the song", keys: []chord{{0, ui.KeyEnter}}, run: func(a *App) { a.cursor.open() }},
-	{id: "leave", group: "On a page", label: "Put the marker away", keys: []chord{{0, ui.KeyEscape}}, run: func(a *App) { a.cursor.hide() }},
+		{id: "back", group: "Getting around", label: "Back", keys: []chord{{primary, ui.KeyLeft}, {primary, ui.KeyBracketLeft}, {ui.Alt, ui.KeyLeft}}, menu: "View",
+			run: func(a *App) { a.router.Back() }},
+		{id: "onward", group: "Getting around", label: "Forward", keys: []chord{{primary, ui.KeyRight}, {primary, ui.KeyBracketRight}, {ui.Alt, ui.KeyRight}}, menu: "View",
+			run: func(a *App) { a.router.Forward() }},
+		{id: "search", group: "Getting around", label: "Search", keys: []chord{{primary, ui.KeyK}, {primary, ui.KeyL}, {primary, ui.KeyF}, {0, ui.KeySlash}}, menu: "View",
+			run: func(a *App) { a.search.focus = true }},
+		{id: "home", group: "Getting around", label: "Home", keys: []chord{{move, ui.KeyH}, {primary, ui.Key1}}, menu: "View", run: page("/home")},
+		{id: "albums", group: "Getting around", label: "Albums", keys: []chord{{move, ui.Key4}, {primary, ui.Key2}}, menu: "View", run: page("/albums")},
+		{id: "artists", group: "Getting around", label: "Artists", keys: []chord{{move, ui.Key3}, {primary, ui.Key3}}, menu: "View", run: page("/artists")},
+		{id: "songs", group: "Getting around", label: "Songs", keys: []chord{{move, ui.Key2}, {primary, ui.Key4}}, menu: "View", run: page("/songs")},
+		{id: "favorites", group: "Getting around", label: "Favorites", keys: []chord{{move, ui.KeyS}, {primary, ui.Key5}}, menu: "View", run: page("/favorites")},
+		{id: "playlists", group: "Getting around", label: "Playlists", keys: []chord{{move, ui.Key1}, {primary, ui.Key6}}, menu: "View", run: page("/playlists")},
+		{id: "downloads", group: "Getting around", label: "Downloads", keys: []chord{{move, ui.KeyD}}, menu: "View", run: page("/downloads")},
+		{id: "playing", group: "Getting around", label: "The album of the song playing", keys: []chord{{move, ui.KeyJ}}, menu: "View",
+			run: func(a *App) {
+				if s := a.player.current(); s != nil && s.AlbumID != "" {
+					a.goTo("/album/" + s.AlbumID)
+				}
+			}},
+		{id: "queue", group: "Getting around", label: "Show or hide the queue", keys: []chord{{move, ui.KeyQ}}, menu: "View",
+			run: func(a *App) {
+				a.settings.QueueOpen = !a.settings.QueueOpen
+				a.saveSettings()
+			}},
+		{id: "lyrics", group: "Getting around", label: "Lyrics", keys: []chord{{move, ui.KeyL}}, menu: "View",
+			run: func(a *App) {
+				if a.router.Path() == "/lyrics" {
+					a.router.Back()
+				} else {
+					a.goTo("/lyrics")
+				}
+			}},
+		{id: "record", group: "Getting around", label: "The record and the lyrics, in place of the app", keys: []chord{{0, ui.KeyV}}, menu: "View",
+			run: func(a *App) {
+				if a.stage.on && !a.stage.mini {
+					a.closeStage()
+				} else {
+					a.openStage()
+				}
+			}},
+		{id: "stage", group: "Getting around", label: "The record in full screen", keys: []chord{{primary | ui.Shift, ui.KeyF}, {0, ui.KeyF}}, menu: "View",
+			run: func(a *App) { a.stageFull(!a.inFull()) }},
+		{id: "mini", group: "Getting around", label: "The record in a small window of its own", keys: []chord{{primary | ui.Shift, ui.KeyM}}, menu: "View",
+			run: func(a *App) {
+				if a.mini != nil {
+					a.closeMini()
+				} else {
+					a.popOut()
+				}
+			}},
+		{id: "settings", group: "Getting around", label: "Settings", keys: []chord{{primary, ui.KeyComma}}, menu: "View", run: page("/settings")},
+		{id: "shortcuts", group: "Getting around", label: "Keyboard shortcuts", keys: []chord{{primary, ui.KeySlash}, {ui.Shift, ui.KeySlash}}, menu: "View", run: page("/shortcuts")},
+		{id: "sync", group: "Getting around", label: "Update the library", keys: []chord{{primary | ui.Shift, ui.KeyR}}, menu: "Library",
+			run: func(a *App) { a.sync() }},
+
+		{id: "down", group: "On a page", label: "The next item, or the one below", keys: []chord{{0, ui.KeyJ}}, run: func(a *App) { a.cursor.step(0, 1) }},
+		{id: "up", group: "On a page", label: "The item before, or the one above", keys: []chord{{0, ui.KeyK}}, run: func(a *App) { a.cursor.step(0, -1) }},
+		{id: "left", group: "On a page", label: "The item to the left", keys: []chord{{0, ui.KeyH}}, run: func(a *App) { a.cursor.step(-1, 0) }},
+		{id: "right", group: "On a page", label: "The item to the right", keys: []chord{{0, ui.KeyL}}, run: func(a *App) { a.cursor.step(1, 0) }},
+		{id: "open", group: "On a page", label: "Open the item, or play the song", keys: []chord{{0, ui.KeyEnter}}, run: func(a *App) { a.cursor.open() }},
+		{id: "leave", group: "On a page", label: "Put the marker away", keys: []chord{{0, ui.KeyEscape}}, run: func(a *App) { a.cursor.hide() }},
+	}
 }
 
 func (a *App) seekBy(d time.Duration) {

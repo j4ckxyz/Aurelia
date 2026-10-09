@@ -764,3 +764,41 @@ func TestUpdateOffer(t *testing.T) {
 		t.Errorf("after Not now: %+v", a.updates)
 	}
 }
+
+// The record shows in place of the app, with its few buttons, and
+// Escape comes back.
+func TestStage(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	tt.Frame()
+	a.openStage()
+	if a.stage.on {
+		t.Fatal("the record shows with nothing playing")
+	}
+	a.player.play(a.lib.AlbumSongs("al1"), 0)
+	tt.Frame()
+	click(t, tt, "The record and the lyrics")
+	tt.Frame()
+	if !a.stage.on || tt.HasText("Albums") {
+		t.Fatalf("after its button: on %v, the app behind %v", a.stage.on, tt.HasText("Albums"))
+	}
+	tt.Move(300, 300)
+	tt.Frame()
+	wantTexts(t, tt, "Back to Aurelia", "Full screen", "In a small window of its own", "Pause", "Next")
+	// The keys still play and pause.
+	tt.Key(0, ui.KeySpace)
+	tt.Frame()
+	if a.player.playing() {
+		t.Error("Space did not pause on the stage")
+	}
+	// It adapts to a window as small as the small one.
+	tt.SetSize(miniMinW, miniMinH)
+	tt.Frame()
+	tt.SetSize(1240, 800)
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	tt.Frame()
+	if a.stage.on || !tt.HasText("Albums") {
+		t.Errorf("after Escape: on %v", a.stage.on)
+	}
+}

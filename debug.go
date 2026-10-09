@@ -13,6 +13,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+
+	"aurelia/internal/library"
 )
 
 // debugHook lets a script drive the app while AURELIA_DEBUG names a
@@ -55,12 +57,25 @@ func (a *App) debug(dir, line string) {
 	switch verb {
 	case "shot":
 		time.Sleep(150 * time.Millisecond)
-		png, err := win.CapturePage()
+		// "shot mini.png" of a name beginning with mini is of the small
+		// window of the record.
+		from := win
+		if strings.HasPrefix(arg, "mini") && a.mini != nil {
+			from = a.mini
+		}
+		png, err := from.CapturePage()
 		if err != nil {
 			log.Print("shot: ", err)
 			return
 		}
 		os.WriteFile(filepath.Join(dir, arg), png, 0o644)
+	case "minisize":
+		w, h, _ := strings.Cut(arg, " ")
+		wi, _ := strconv.Atoi(w)
+		hi, _ := strconv.Atoi(h)
+		if a.mini != nil {
+			a.mini.SetSize(wi, hi)
+		}
 	case "sleep":
 		d, _ := time.ParseDuration(arg)
 		time.Sleep(d)
@@ -87,6 +102,23 @@ func (a *App) debug(dir, line string) {
 	case "play":
 		// "play album <n>" plays the nth album by name; "play" toggles.
 		do(func() {
+			if arg == "lyrics" {
+				// The first song that has lyrics, with its album after it.
+				for _, sg := range a.songsBy("Title") {
+					if sg.HasLyrics {
+						songs := a.lib.AlbumSongs(sg.AlbumID)
+						for i, o := range songs {
+							if o == sg {
+								a.player.play(songs, i)
+								return
+							}
+						}
+						a.player.play([]*library.Song{sg}, 0)
+						return
+					}
+				}
+				return
+			}
 			if strings.HasPrefix(arg, "album") {
 				n, _ := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(arg, "album")))
 				if albums := a.albumsBy("Name"); n < len(albums) {

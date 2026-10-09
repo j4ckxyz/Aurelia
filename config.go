@@ -51,6 +51,8 @@ type Settings struct {
 	SongSort   string `json:"songSort,omitempty"`
 	ArtistSort string `json:"artistSort,omitempty"`
 	QueueOpen  bool   `json:"queueOpen,omitempty"`
+	// MiniPinned keeps the small window of the record above the others.
+	MiniPinned bool `json:"miniPinned,omitempty"`
 	// OthersPlaylists shows the playlists other people of the server
 	// made public, among the user's own.
 	OthersPlaylists bool `json:"othersPlaylists,omitempty"`

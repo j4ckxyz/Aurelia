@@ -73,6 +73,11 @@ func (a *App) view(c *ui.Context) {
 		a.toastLayer(c, 16)
 		return
 	}
+	if a.stage.on && !a.stage.mini {
+		a.stagePage(c)
+		a.toastLayer(c, 16)
+		return
+	}
 	a.cursor.begin(a.router.Location())
 	root := ui.Column(c).Fill()
 	a.shortcuts(c, root)

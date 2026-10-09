@@ -100,6 +100,12 @@ func (a *App) open() {
 		})
 	}
 	win.OnClosed(func() { a.win = nil })
+	// Leaving full screen by the system's own means leaves the stage.
+	win.OnLeaveFullScreen(func() {
+		a.update(func() {
+			a.stage.full = false // the window is as it was
+		})
+	})
 	mygo.Theme.OnUpdated(func() {
 		dark := mygo.Theme.IsDark()
 		a.update(func() { a.systemDark = dark })

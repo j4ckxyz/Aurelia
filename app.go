@@ -27,7 +27,9 @@ import (
 // App is the state of the app. The view reads and changes it on the
 // interface's goroutine; other goroutines change it through update.
 type App struct {
-	win      *mygo.Window
+	win *mygo.Window
+	// mini is the small window of the record, nil when it is not out.
+	mini     *mygo.Window
 	dirs     dirs
 	settings Settings
 	router   *ui.Router
@@ -79,6 +81,8 @@ type App struct {
 	scrub       float64
 	volumeDirty bool
 
+	// stage is the full screen of the song playing.
+	stage stage
 	// remote is the other devices of the user, to play on.
 	remote remote
 	// cursor is the marker the keys move over a page's items.
@@ -128,7 +132,12 @@ func newApp(d dirs, silent bool) *App {
 // update runs fn on the interface's goroutine and draws a frame.
 func (a *App) update(fn func()) {
 	if a.win != nil {
-		a.win.Update(fn)
+		a.win.Update(func() {
+			fn()
+			if a.mini != nil {
+				a.mini.Invalidate() // it shows the same state
+			}
+		})
 		return
 	}
 	a.pendingMu.Lock()
