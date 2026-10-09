@@ -476,6 +476,15 @@ func (c *Client) MediaInfo(ctx context.Context, id string) (*Item, error) {
 	return &it, err
 }
 
+// SimilarArtists returns the artists the server finds like an artist.
+func (c *Client) SimilarArtists(ctx context.Context, id string, limit int) ([]Item, error) {
+	q := c.userQuery()
+	q.Set("Limit", strconv.Itoa(limit))
+	var res itemsResult
+	err := c.do(ctx, "GET", "/Artists/"+id+"/Similar", q, nil, &res)
+	return res.Items, err
+}
+
 // InstantMix returns songs like an item: kind is "Songs", "Albums",
 // "Artists" or "Playlists", and id the item's. The server picks them, the
 // item's own among them for songs.

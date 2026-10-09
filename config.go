@@ -73,6 +73,8 @@ type Settings struct {
 	// when set), which is told the song's artist, title, album and length.
 	Lrclib    bool   `json:"lrclib,omitempty"`
 	LrclibURL string `json:"lrclibURL,omitempty"`
+	// Pinned are the albums, artists and playlists kept in the sidebar.
+	Pinned []Pin `json:"pinned,omitempty"`
 	// Autoplay goes on with songs like the last when the queue ends.
 	Autoplay bool `json:"autoplay,omitempty"`
 	// Motion is "" to follow the system's Reduce motion, "on" or "reduced".
@@ -214,4 +216,12 @@ func (s *Settings) levelDB() float64 {
 		}
 	}
 	return 4
+}
+
+// Pin is an album, an artist or a playlist kept in the sidebar. Name is
+// what it was called, for as long as the library does not say.
+type Pin struct {
+	Kind string `json:"kind"` // "album", "artist" or "playlist"
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

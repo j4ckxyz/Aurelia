@@ -675,7 +675,8 @@ func (a *App) artistPage(c *ui.Context, r *ui.Route) {
 	}
 	r.Title(ar.Name)
 	about := a.detail(id)
-	rows := a.rows(c, "/artist/"+id, about, func(add func(func(c *ui.Context))) {
+	similar := a.similarArtists(id)
+	rows := a.rows(c, "/artist/"+id, fmt.Sprint(about, len(similar)), func(add func(func(c *ui.Context))) {
 		albums := a.lib.ArtistAlbums(id)
 		songs := a.artistSongs(id)
 		cols := a.columns(c)
@@ -718,6 +719,10 @@ func (a *App) artistPage(c *ui.Context, r *ui.Route) {
 			a.section(add, "Appears on", nil)
 			tileRows(add, len(on), cols, func(c *ui.Context, i int) { a.albumTile(c, on[i], "") })
 		}
+		if len(similar) > 0 {
+			a.section(add, "Fans also like", nil)
+			tileRows(add, len(similar), cols, func(c *ui.Context, i int) { a.artistTile(c, similar[i]) })
+		}
 		if about != "" {
 			a.section(add, "About", nil)
 			add(func(c *ui.Context) {
@@ -732,6 +737,42 @@ func (a *App) artistPage(c *ui.Context, r *ui.Route) {
 type detail struct {
 	overview string
 	asked    bool
+	// similar are the artists the server finds like this one, by ID.
+	similar      []string
+	askedSimilar bool
+}
+
+// similarArtists returns the artists of the library that the server finds
+// like an artist, none until it has told.
+func (a *App) similarArtists(id string) []*library.Artist {
+	d := a.details[id]
+	if d == nil {
+		d = &detail{}
+		a.details[id] = d
+	}
+	if cl := a.clientNow(); cl != nil && !d.askedSimilar {
+		d.askedSimilar = true
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			items, err := cl.SimilarArtists(ctx, id, 14)
+			if err != nil {
+				return
+			}
+			a.update(func() {
+				for _, it := range items {
+					d.similar = append(d.similar, it.ID)
+				}
+			})
+		}()
+	}
+	var out []*library.Artist
+	for _, sid := range d.similar {
+		if ar := a.lib.Artist(sid); ar != nil && sid != id {
+			out = append(out, ar)
+		}
+	}
+	return out
 }
 
 // detail returns the overview of an artist, "" until the server gave it.
@@ -904,6 +945,15 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 					if m.Item("Delete Playlist…").Chosen() {
 						a.deletePlaylist(pl)
 					}
+				}
+			}
+			if prev := h.menu; true {
+				h.menu = func(m *ui.Menu) {
+					if prev != nil {
+						prev(m)
+						m.Separator()
+					}
+					a.pinMenu(m, "playlist", pl.ID, pl.Name)
 				}
 			}
 			if len(songs) > 0 {

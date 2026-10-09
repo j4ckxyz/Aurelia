@@ -412,6 +412,24 @@ func (a *App) debug(dir, line string) {
 			}
 			a.told = ""
 		})
+	case "similar":
+		// "similar" writes the artists like the one of the song playing to
+		// the file "similar".
+		var id string
+		do(func() {
+			if s := a.player.current(); s != nil {
+				id = a.artistOf(s.ArtistIDs, s.AlbumArtistIDs)
+				a.similarArtists(id)
+			}
+		})
+		time.Sleep(3 * time.Second)
+		do(func() {
+			out := ""
+			for _, ar := range a.similarArtists(id) {
+				out += ar.Name + "\n"
+			}
+			os.WriteFile(filepath.Join(dir, "similar"), []byte(out), 0o644)
+		})
 	case "front":
 		// A covered window paints no frames, so a shot would show an old
 		// one: the window is brought forward.

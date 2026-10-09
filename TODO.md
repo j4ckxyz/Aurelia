@@ -87,8 +87,6 @@ Library
 
 - [ ] Select several songs (shift and ⌘ click) to queue, download, like
       or add to a playlist together.
-- [ ] An artist's most played songs and similar artists on their page.
-- [ ] Pin albums and playlists to the sidebar.
 
 Desktop
 
@@ -97,7 +95,6 @@ Desktop
       than it is worth until asked for again)*
 - [ ] Discord shows what plays.
 - [ ] A visualizer on the record.
-- [ ] A year in review: what you played most.
 
 Formats
 
@@ -308,6 +305,24 @@ Each entry is written as:
       songs, pauses, stalls, repeats) and of the requests against a made-up
       ListenBrainz (the body, the token, a batch after a failure). **Not
       tried against listenbrainz.org**, for want of an account.
+- [x] **Similar artists on an artist's page, and their most played songs**
+      (2026-10-09): "Fans also like" from the server's own list, those it
+      names that the library has; the most played songs were there already.
+      Verified: a test with a made-up server (an artist the library lacks is
+      left out), and the real server's list for the artist of the song
+      playing (seven artists, all of them in the library).
+- [x] **Pin albums, artists and playlists to the sidebar** (2026-10-09):
+      "Pin to Sidebar" and "Unpin from Sidebar" in their menus, and in the
+      menu of the pin itself; a PINNED heading and the entries above the
+      playlists, kept between runs, with the name remembered while the
+      library is read, and left out when the library no longer has the
+      item. Verified by a test through the real menus (including a playlist
+      shown in both places, and a pin of a missing album).
+- [x] **A look back at what you played most** (2026-10-09): "Your
+      listening", from Browse: the plays and the time they add up to, the
+      songs, albums and artists most played. Not a "year in review": the
+      server counts plays in all, not by year, so it is an all-time
+      account. Verified by a test of the sums and the page.
 - [x] **An equalizer** (2026-10-09): ten bands from 31 Hz to 16 kHz and a
       preamp, 14 presets and presets of your own (saved, named, deleted),
       one switch, kept between runs, with a curve drawn over the sliders.

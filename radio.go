@@ -113,4 +113,5 @@ func (a *App) artistMenu(m *ui.Menu, ar *library.Artist) {
 	if m.Item("Start Radio").Chosen() {
 		a.startRadio("Artists", ar.ID, ar.Name, nil)
 	}
+	a.pinMenu(m, "artist", ar.ID, ar.Name)
 }

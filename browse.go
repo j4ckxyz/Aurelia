@@ -192,7 +192,11 @@ func (a *App) genresPage(c *ui.Context) {
 		a.cursor.in(&a.pages.genreList, i)
 		defer a.cursor.in(nil, 0)
 		if i == 0 {
-			a.pageTitle(c, "Browse", count(len(f.genres), "genre", "genres")+" and "+count(len(f.decades), "decade", "decades"), nil)
+			a.pageTitle(c, "Browse", count(len(f.genres), "genre", "genres")+" and "+count(len(f.decades), "decade", "decades"), func() {
+				if a.pillButton(c, "audio-lines", "Your listening", false).Clicked() {
+					a.goTo("/listening")
+				}
+			})
 			return
 		}
 		r := rows[i-1]

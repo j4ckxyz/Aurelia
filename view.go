@@ -133,7 +133,7 @@ func (a *App) view(c *ui.Context) {
 // each opens at, and what the pages inside it begin with.
 var sections = []struct{ root, under string }{
 	{"/home", ""}, {"/albums", "/album/"}, {"/artists", "/artist/"}, {"/songs", ""},
-	{"/genres", "/genre/"}, {"/genres", "/decade/"},
+	{"/genres", "/genre/"}, {"/genres", "/decade/"}, {"/genres", "/listening"},
 	{"/favorites", ""}, {"/playlists", "/playlist/"}, {"/downloads", ""},
 }
 
@@ -231,6 +231,9 @@ func (a *App) route(c *ui.Context, r *ui.Route) {
 	case r.Match("/songs"):
 		r.Title("Songs")
 		a.songsPage(c)
+	case r.Match("/listening"):
+		r.Title("Your listening")
+		a.listeningPage(c)
 	case r.Match("/genres"):
 		r.Title("Browse")
 		a.genresPage(c)
@@ -438,6 +441,21 @@ func (a *App) sidebar(c *ui.Context) {
 			a.navItem(c, "circle-arrow-down", "Downloads", "/downloads", "")
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(4, 10, 10).Gap(1).Children(func() {
+			head := func(title string) {
+				ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(10, 10, 6)
+			}
+			shown := false
+			for _, pin := range a.settings.Pinned {
+				name, path, glyph, ok := a.pinned(pin)
+				if !ok {
+					continue
+				}
+				if !shown {
+					head("PINNED")
+					shown = true
+				}
+				a.navItemAs(c, "pin:"+path, glyph, name, path, "").ContextMenu(func(m *ui.Menu) { a.pinMenu(m, pin.Kind, pin.ID, pin.Name) })
+			}
 			playlists := a.playlists()
 			if len(playlists) > 0 {
 				ui.Text(c, "PLAYLISTS").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(10, 10, 6)
@@ -516,11 +534,17 @@ func (a *App) historyButton(c *ui.Context, forward bool) {
 }
 
 // navItem is a row of the sidebar that shows a page.
-func (a *App) navItem(c *ui.Context, glyph, label, path, under string) {
+func (a *App) navItem(c *ui.Context, glyph, label, path, under string) ui.Element {
+	return a.navItemAs(c, path, glyph, label, path, under)
+}
+
+// navItemAs is navItem under a key of its own, for a page the sidebar
+// lists twice.
+func (a *App) navItemAs(c *ui.Context, key, glyph, label, path, under string) ui.Element {
 	p := a.pal
 	at := a.router.Path()
 	active := at == path || (under != "" && strings.HasPrefix(at, under))
-	b := ui.ButtonBase(c.Key(path)).Height(32).Padding(0, 10).Gap(10).Radius(p.radius).Justify(ui.Start).Shrink(0).Label(label)
+	b := ui.ButtonBase(c.Key(key)).Height(32).Padding(0, 10).Gap(10).Radius(p.radius).Justify(ui.Start).Shrink(0).Label(label)
 	fg := p.muted
 	switch {
 	case active:
@@ -550,6 +574,7 @@ func (a *App) navItem(c *ui.Context, glyph, label, path, under string) {
 		}
 		a.sidebarPeek = false // in a narrow window it was only asked for
 	}
+	return b
 }
 
 // syncStatus tells of the library being read, or of why it could not be.
@@ -757,6 +782,7 @@ func (a *App) albumMenu(m *ui.Menu, al *library.Album) {
 	if m.Item("Start Radio").Chosen() {
 		a.startRadio("Albums", al.ID, al.Name, nil)
 	}
+	a.pinMenu(m, "album", al.ID, al.Name)
 	if m.Item("Share as a Picture…").Chosen() {
 		a.shareAlbum(al)
 	}

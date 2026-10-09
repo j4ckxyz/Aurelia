@@ -107,6 +107,7 @@ func (a *App) playlistTile(c *ui.Context, pl *library.Playlist) {
 		key: pl.ID, id: pl.ID, tag: pl.ImageTag, glyph: "list-music", title: pl.Name,
 		sub:  count(pl.Songs, "song", "songs"),
 		open: func() { a.goTo("/playlist/" + pl.ID) },
+		menu: func(m *ui.Menu) { a.pinMenu(m, "playlist", pl.ID, pl.Name) },
 	})
 }
 
