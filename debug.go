@@ -132,7 +132,11 @@ func (a *App) debug(dir, line string) {
 				len(a.images.mem), a.images.memBytes, m.HeapAlloc, m.Sys)
 			out += fmt.Sprintf("downloads: %d songs asked, %d here, %d to go, %d failed, offline=%v\n", len(a.downloads.songs), len(a.downloads.done), len(a.downloads.order)+len(a.downloads.active), len(a.downloads.failed), a.offline)
 			u := &a.updates
-			out += fmt.Sprintf("version=%s update: checking=%v installing=%v ready=%q upToDate=%v err=%q\n", appVersion(), u.checking, u.installing, u.ready, u.upToDate, u.err)
+			offered := ""
+			if u.offer && u.available != nil {
+				offered = u.available.Version
+			}
+			out += fmt.Sprintf("version=%s update: checking=%v installing=%v ready=%q upToDate=%v err=%q offered=%q signedIn=%v\n", appVersion(), u.checking, u.installing, u.ready, u.upToDate, u.err, offered, a.signedIn())
 			shown := a.settings.Proxy
 			if u, _, err := parseProxy(shown); err == nil && u != nil {
 				shown = u.Redacted() // not its password, in a log
@@ -175,7 +179,22 @@ func (a *App) debug(dir, line string) {
 			a.applyProxy()
 		})
 	case "update":
-		do(func() { a.checkForUpdates(true) })
+		// "update" checks as Settings does; "update accept" and "update
+		// decline" answer the page that offers a version.
+		do(func() {
+			switch arg {
+			case "accept":
+				a.acceptUpdate()
+			case "decline":
+				a.declineUpdate()
+			case "preview":
+				// The page, with a version made up, to look at.
+				a.updates.available = &mygo.Update{Version: "9.9.9", Notes: "## 9.9.9\n\n- Keyboard shortcuts for everything, with a page that lists them.\n- A full screen with the record turning and the lyrics\n  following the song.\n- Play on another device, and control it from here.\n"}
+				a.updates.offer = true
+			default:
+				a.checkForUpdates(checkAsked)
+			}
+		})
 	case "restart":
 		do(func() { a.restart() })
 	case "heap":

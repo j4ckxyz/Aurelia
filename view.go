@@ -62,6 +62,12 @@ func (a *App) frame(c *ui.Context) {
 // view builds the window.
 func (a *App) view(c *ui.Context) {
 	a.frame(c)
+	if a.updates.offer {
+		// A new version, found as the app opened, before anything else.
+		a.updatePage(c)
+		a.toastLayer(c, 16)
+		return
+	}
 	if !a.signedIn() {
 		a.loginPage(c)
 		a.toastLayer(c, 16)

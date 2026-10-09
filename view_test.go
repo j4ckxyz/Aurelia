@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"aurelia/internal/jellyfin"
@@ -740,4 +741,26 @@ func TestHomeContinues(t *testing.T) {
 		t.Error("the card's button did not pause")
 	}
 	wantTexts(t, tt, "CONTINUE PLAYING", "Resume")
+}
+
+// A version found as the app opens is offered in place of the app, with
+// what is new in it; declined, the app shows, and it is not offered
+// again in this run.
+func TestUpdateOffer(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	tt.Frame()
+	a.updates.available = &mygo.Update{Version: "9.9.9", Notes: "## 9.9.9\n\n- A first thing, told over\n  two lines.\n- A `second` thing.\n"}
+	a.updates.offer = true
+	tt.Frame()
+	wantTexts(t, tt, "Aurelia 9.9.9 is here", "WHAT IS NEW", "A first thing, told over two lines.", "A second thing.", "Update and reopen", "Not now")
+	if tt.HasText("Albums") {
+		t.Error("the app shows behind the offer")
+	}
+	click(t, tt, "Not now")
+	tt.Frame()
+	wantTexts(t, tt, "Albums", "Good")
+	if a.updates.offer || a.updates.declined != "9.9.9" {
+		t.Errorf("after Not now: %+v", a.updates)
+	}
 }

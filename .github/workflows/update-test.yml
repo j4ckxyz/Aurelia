@@ -1,5 +1,6 @@
 # Checks, on a real macOS, Windows and Linux, that an installed Aurelia
-# replaces itself with a newer version: tools/update-test.sh.
+# replaces itself with a newer version, and that opened signed in it
+# offers one, updates and reopens by itself: tools/update-test.sh.
 name: Update test
 
 on:
@@ -8,6 +9,7 @@ on:
     branches: [main]
     paths:
       - update.go
+      - debug.go
       - tools/update-test.sh
       - go.mod
       - .github/workflows/update-test.yml
@@ -35,6 +37,14 @@ jobs:
             choco install nsis -y --no-progress
             echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
           fi
+      - name: A display, for the app to open its window on
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libgles2 libglx-mesa0 dbus-x11
       - name: Install an old version, publish a new one, and update
         shell: bash
-        run: tools/update-test.sh
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- tools/update-test.sh
+          else
+            tools/update-test.sh
+          fi

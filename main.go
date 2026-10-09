@@ -230,7 +230,7 @@ func (a *App) menu() *mygo.Menu {
 				if a.signedIn() {
 					a.goTo("/settings")
 				}
-				a.checkForUpdates(true)
+				a.checkForUpdates(checkAsked)
 			}),
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{

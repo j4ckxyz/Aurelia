@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -26,7 +27,20 @@ type updates struct {
 	ready      string  // the version installed, which a restart runs
 	err        string
 	started    bool
+	// offer shows the page that offers the version found as the app
+	// opened; reopen has the app start again once it is installed, and
+	// declined is the version that was not wanted in this run.
+	offer    bool
+	reopen   bool
+	declined string
 }
+
+// Why a check for updates is made.
+const (
+	checkAtOpening    = iota // the app just opened: a version found is offered on a page of its own
+	checkInBackground        // the app runs: a version found is installed quietly
+	checkAsked               // the user asked in Settings
+)
 
 // appVersion is the version of the app running: the released app's, or
 // the one the code names for a build that was not packaged.
@@ -45,11 +59,13 @@ func (a *App) startUpdates() {
 	}
 	a.updates.started = true
 	go func() {
-		time.Sleep(15 * time.Second)
-		for {
+		// As the app opens, before the user is far into anything; then
+		// now and then.
+		time.Sleep(time.Second)
+		for why := checkAtOpening; ; why = checkInBackground {
 			a.update(func() {
 				if a.settings.AutoUpdate {
-					a.checkForUpdates(false)
+					a.checkForUpdates(why)
 				}
 			})
 			time.Sleep(6 * time.Hour)
@@ -57,10 +73,12 @@ func (a *App) startUpdates() {
 	}()
 }
 
-// checkForUpdates asks whether a newer version is released, and with
-// install downloads it at once: as the setting does on its own, and as
-// the button in Settings does when asked.
-func (a *App) checkForUpdates(manual bool) {
+// checkForUpdates asks whether a newer version is released. One found
+// as the app opens is offered on a page of its own; one found while it
+// runs, or asked for in Settings, is downloaded at once, and a restart
+// offered.
+func (a *App) checkForUpdates(why int) {
+	manual := why == checkAsked
 	u := &a.updates
 	if u.checking || u.installing || u.ready != "" {
 		return
@@ -85,6 +103,10 @@ func (a *App) checkForUpdates(manual bool) {
 				}
 			case up == nil:
 				u.upToDate = true
+			case why == checkAtOpening:
+				u.available, u.offer = up, true
+			case !manual && up.Version == u.declined:
+				// Not now, they said.
 			default:
 				u.available = up
 				if a.settings.AutoUpdate || manual {
@@ -116,9 +138,16 @@ func (a *App) installUpdate() {
 			u.installing = false
 			if err != nil {
 				u.err = "Could not install version " + up.Version + ": " + friendly(err)
+				u.reopen = false
 				return
 			}
 			u.available, u.ready = nil, up.Version
+			if u.reopen {
+				// Asked for on the page of the update: the new version
+				// opens in this one's place, signed in as this one is.
+				a.restart()
+				return
+			}
 			toasts = append(toasts, ui.Toast{
 				ID:          "update-ready",
 				Title:       "Aurelia " + up.Version + " is ready",
@@ -132,10 +161,140 @@ func (a *App) installUpdate() {
 }
 
 // restart quits the app and starts it again, as the new version when one
-// was installed.
+// was installed. The session and the queue are in the app's files: the
+// app that opens is signed in, with the same songs waiting.
 func (a *App) restart() {
 	a.saveQueue()
+	a.saveSettings()
 	mygo.App.Relaunch()
+}
+
+// acceptUpdate installs the version offered and reopens the app as it.
+func (a *App) acceptUpdate() {
+	u := &a.updates
+	if u.available == nil || u.installing {
+		return
+	}
+	u.reopen = true
+	a.installUpdate()
+}
+
+// declineUpdate leaves the version offered for another time.
+func (a *App) declineUpdate() {
+	u := &a.updates
+	if u.installing {
+		return
+	}
+	if u.available != nil {
+		u.declined = u.available.Version
+	}
+	u.offer, u.err = false, ""
+}
+
+// updatePage offers a version found as the app opened, in place of the
+// app: what is new in it, and a button that installs it and reopens.
+func (a *App) updatePage(c *ui.Context) {
+	p := a.pal
+	u := &a.updates
+	up := u.available
+	if up == nil && u.ready == "" {
+		u.offer = false
+		return
+	}
+	version := u.ready
+	if up != nil {
+		version = up.Version
+	}
+	if u.installing {
+		c.After(100 * time.Millisecond)
+	}
+	bar := c.TitleBar()
+	ui.Column(c).Fill().LinearGradient(ui.LinearGradient{From: p.accent.Alpha(0.2), To: p.accent.Alpha(0), Angle: 180, End: 0.6, Oklab: true}).Children(func() {
+		ui.Row(c).Height(max(bar.Height, topBarH)).DragWindow().Justify(ui.End).Padding(0, 12).Children(func() {
+			a.windowControls(c)
+		})
+		ui.Column(c).Grow(1).MinHeight(0).Center().Padding(8, 24, 40).Children(func() {
+			ui.Column(c).Width(480).MaxHeightPercent(100).Gap(18).AlignItems(ui.Stretch).Children(func() {
+				ui.Column(c).AlignItems(ui.Center).Gap(8).Shrink(0).Children(func() {
+					ui.Box(c).Size(64, 64).Radius(18).Center().Background(p.accent).Shadow(0, 10, 30, 0, p.shadow).Children(func() {
+						ui.Icon(c, icon("logo")).Size(38, 38).TextColor(p.onAcc)
+					})
+					ui.Text(c, "Aurelia "+version+" is here").FontSize(26).FontWeight(800).Margin(10, 0, 0).TextAlign(ui.Center)
+					ui.Text(c, "You have "+appVersion()+". Updating takes a moment: Aurelia reopens by itself, signed in, with your queue as it is.").
+						TextColor(p.muted).TextAlign(ui.Center)
+				})
+				if up != nil {
+					if notes := releaseNotes(up.Notes); len(notes) > 0 {
+						ui.Scroll(c.Key("notes")).MinHeight(60).Shrink(1).Padding(14, 16).Gap(9).Radius(p.radius+4).Background(p.surface.Alpha(0.8)).Border(1, p.border).Children(func() {
+							ui.Text(c, "WHAT IS NEW").FontSize(11).FontWeight(700).LetterSpacing(1).TextColor(p.accent)
+							for i, n := range notes {
+								ui.Row(c.Key(i)).Gap(9).AlignItems(ui.Start).Children(func() {
+									ui.Box(c).Size(5, 5).Radius(3).Background(p.faint).Margin(7, 0, 0).Shrink(0)
+									ui.Text(c, n).Grow(1).MinWidth(0).LineHeight(1.4)
+								})
+							}
+						})
+					}
+				}
+				ui.Column(c).Gap(10).Shrink(0).AlignItems(ui.Stretch).Children(func() {
+					switch {
+					case u.installing || u.ready != "":
+						status := "Reopening…"
+						if u.installing {
+							status = fmt.Sprintf("Downloading… %d%%", int(u.progress*100))
+						}
+						ui.Box(c).Height(6).Radius(3).Background(p.hover).Children(func() {
+							ui.Box(c).WidthPercent(100 * float32(max(u.progress, 0.02))).Height(6).Radius(3).Background(p.accent)
+						})
+						ui.Text(c, status).FontSize(12).TextColor(p.muted).TextAlign(ui.Center).FontFeatures("tnum")
+					default:
+						if u.err != "" {
+							ui.Row(c).Gap(8).AlignItems(ui.Start).Children(func() {
+								ui.Icon(c, icon("circle-alert")).Size(15, 15).TextColor(p.danger).Margin(1, 0, 0)
+								ui.Text(c, u.err).FontSize(12).TextColor(p.muted).Grow(1)
+							})
+						}
+						ui.Row(c).Gap(10).Justify(ui.Center).Children(func() {
+							label := "Update and reopen"
+							if u.err != "" {
+								label = "Try again"
+							}
+							if a.pillButton(c, "download", label, true).Clicked() {
+								a.acceptUpdate()
+							}
+							if a.pillButton(c, "", "Not now", false).Clicked() {
+								a.declineUpdate()
+							}
+						})
+					}
+				})
+			})
+		})
+	})
+}
+
+// releaseNotes are the points of a version's notes, which are the
+// Markdown of its part of CHANGELOG.md: a list, its lines wrapped.
+func releaseNotes(md string) []string {
+	var notes []string
+	for _, line := range strings.Split(md, "\n") {
+		line = strings.TrimRight(line, " \t\r")
+		text := strings.TrimSpace(line)
+		switch {
+		case text == "" || strings.HasPrefix(text, "#"):
+			continue
+		case strings.HasPrefix(text, "- ") || strings.HasPrefix(text, "* "):
+			notes = append(notes, text[2:])
+		case len(notes) > 0 && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")):
+			notes[len(notes)-1] += " " + text // a wrapped line of the point
+		default:
+			notes = append(notes, text)
+		}
+	}
+	for i, n := range notes {
+		notes[i] = strings.NewReplacer("`", "", "**", "").Replace(n)
+	}
+	return notes
 }
 
 // updatesCard is the part of Settings about the app's version.
@@ -176,11 +335,11 @@ func (a *App) updatesCard(c *ui.Context) {
 				}
 			default:
 				if a.pillButton(c, "refresh-cw", "Check for updates", false).Disabled(u.checking || u.installing).Clicked() {
-					a.checkForUpdates(true)
+					a.checkForUpdates(checkAsked)
 				}
 			}
 		})
-		a.setting(c, "Update automatically", "Download new versions as they are released, and ask to restart. Turned off, Aurelia checks only when you ask.", func() {
+		a.setting(c, "Update automatically", "Offer a new version as Aurelia opens, and download the ones released while it runs. Turned off, Aurelia checks only when you ask.", func() {
 			if ui.Switch(c.Key("auto-update"), &a.settings.AutoUpdate).Label("Update automatically").Changed() {
 				a.saveSettings()
 			}
@@ -196,6 +355,7 @@ func (a *App) updatesCard(c *ui.Context) {
 //	                                  where the app has no terminal
 //	aurelia --self-update FILE        installs the newest release over the
 //	                                  app, and writes what it did
+//	aurelia --write-data-dir FILE     writes where the app keeps its settings
 func commandLine(args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -218,6 +378,8 @@ func commandLine(args []string) bool {
 		say(appVersion())
 	case "--self-update":
 		say(selfUpdate())
+	case "--write-data-dir":
+		say(appDirs().data)
 	default:
 		return false
 	}
