@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"log"
 	"net"
 	"os"
@@ -51,7 +52,9 @@ type App struct {
 	images *imageCache
 	// pictures, when set, draws the pictures in place of the server's,
 	// as the screenshots of the README do.
-	pictures  func(id string) *ui.Bitmap
+	pictures func(id string) *ui.Bitmap
+	// covers, when set, gives the pictures the record is made of.
+	covers    func(id string) image.Image
 	player    *player
 	downloads *downloads
 	// offline is set while the server does not answer.

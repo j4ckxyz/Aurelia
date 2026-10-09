@@ -19,7 +19,8 @@ playlists. It does not show movies or shows.
 
 | | |
 |---|---|
-| ![An album](docs/album.png) | ![Lyrics and the queue](docs/lyrics.png) |
+| ![The record: the cover turning, the lyrics coming up](docs/record.png) | ![An album](docs/album.png) |
+| ![Lyrics and the queue](docs/lyrics.png) | ![A window at its smallest](docs/small.png) |
 | ![Albums, in the light theme](docs/albums-light.png) | ![An artist, in Tokyo Night](docs/artist-tokyo-night.png) |
 | ![Search, in Catppuccin Mocha](docs/search-catppuccin.png) | ![The themes](docs/themes.png) |
 
@@ -65,26 +66,54 @@ WebKitGTK is missing: Aurelia shows no web page and does not need it.
 
 ### Updates
 
-Aurelia updates itself from the releases here. A little after it opens,
-and a few times a day, it looks for a newer version, downloads it, checks
-that it was signed with Aurelia's key, puts it in place of the app, and
-offers to restart; the version running plays on until you do. Settings ▸
-Updates turns that off, and has a button to check now. A copy installed
-from the `.deb` is updated by installing a newer `.deb` instead.
+Aurelia updates itself from the releases here. When it opens and a newer
+version is out, it says so before anything else, on a page with what is
+new: **Update and reopen** downloads it, checks that it was signed with
+Aurelia's key, puts it in place of the app and opens the app again by
+itself, signed in as you were, with your queue; **Not now** leaves it for
+another day. Versions released while Aurelia runs are downloaded quietly,
+and a restart offered. Settings ▸ Updates turns all of that off, and has a
+button to check now. A copy installed from the `.deb` is updated by
+installing a newer `.deb` instead.
 
 ## What it does
 
 - **Your whole library, instantly.** Aurelia keeps an index of the library
   on disk and refreshes it in the background. It starts with everything on
   screen, and searching thousands of songs takes under a millisecond.
-- **Albums, artists, songs, playlists, favorites**, a home page of what is
-  new and what you played, and a search of all of them as you type.
+- **Albums, artists, songs, playlists, favorites**, and a search of all of
+  them as you type. Home opens with the song you were on, to go on with,
+  among the albums you played last (a right click takes one out), then
+  what is new, the artists you play most and your playlists. The sidebar
+  comes back to where you left each part of the library, an artist's page
+  say; a second click goes to its first page.
+- **Your playlists, not everyone's.** A Jellyfin server lists the
+  playlists others made public among your own. Aurelia shows yours, and
+  theirs once Settings ▸ Library asks.
+- **A window of any size**, down to 480 × 420: narrow, it puts the sidebar
+  away behind a button and keeps the buttons that play. The sidebar hides
+  with its button or ⌘B, and its edge drags to resize it.
 - **Playback** of FLAC and MP3 decoded in Go, with the server transcoding
   everything else. Gapless from one song to the next, seeking that does not
   wait for the whole file, a queue you can add to, take from and drag into
-  another order, shuffle, repeat, volume normalization and a quality limit
-  for slow connections. Plays are reported to the server.
+  another order, shuffle, repeat, and a quality limit for slow
+  connections. Volume normalization plays every song about as loud, at one
+  of three levels as in Spotify: Louder, Normal or Quieter. Plays are
+  reported to the server.
 - **Lyrics**, with the line being sung lit when the lyrics are timed.
+- **The record.** A button of the player's bar, or V, shows the song in
+  place of the app: its cover as a record that turns while it plays, over
+  the cover's own colors, and the lyrics under it, each line sliding up as
+  it is sung. F puts it over the whole screen. It also goes to a small
+  window of its own (⇧⌘M) that a pin keeps above your other windows.
+- **Play on another device.** The devices button of the player's bar lists
+  the other places you are signed in to Jellyfin that play music: an
+  Aurelia on another computer, Jellyfin's web and mobile apps. Choose one
+  and what plays here goes on there; Aurelia then shows what that device
+  plays and controls it: play and pause, next and previous, the place in
+  the song, the volume, shuffle, repeat, and songs added to its queue.
+  Aurelia is such a device to the others, so one Aurelia controls another.
+- **The keyboard does everything**: see [Shortcuts](#shortcuts).
 - **Back and forward** through the pages you visited, at the top left, as
   in a browser: buttons, a right click for the history, ⌘[ and ⌘] (Alt+←
   and Alt+→ on Windows and Linux) and a mouse's side buttons.
@@ -258,18 +287,29 @@ Colors are `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` or `hsl()`.
 
 ## Shortcuts
 
-| macOS | Windows, Linux | |
-|---|---|---|
-| Space | Space | Play or pause |
-| ⌘→ / ⌘← | Ctrl+→ / Ctrl+← | Next / previous song |
-| ⌘↑ / ⌘↓ | Ctrl+↑ / Ctrl+↓ | Volume |
-| ⌘F, ⌘K | Ctrl+F, Ctrl+K | Search |
-| ⌘[ / ⌘] | Alt+← / Alt+→ | Back / forward |
-| ⌘1 … ⌘6 | Ctrl+1 … Ctrl+6 | Home, Albums, Artists, Songs, Favorites, Playlists |
-| ⇧⌘U | Ctrl+Shift+U | Show the queue |
-| ⇧⌘L | Ctrl+Shift+L | Lyrics |
-| ⌘R | Ctrl+R | Update the library |
-| ⌘, | Ctrl+, | Settings |
+⌘/ (Ctrl+/) lists them all in the app. ⌘ is Ctrl on Windows and Linux, and
+⌥ is Alt.
+
+| | |
+|---|---|
+| Space | Play or pause, wherever the focus is |
+| ⇧⌘→ / ⇧⌘← | Next / previous song |
+| ⇧→ / ⇧← | Forward / back 5 seconds |
+| ⌘↑ / ⌘↓ | Volume; with ⇧, full volume and mute. M mutes too |
+| ⌘S / ⌘R | Shuffle / repeat |
+| ⌥⇧B | Add the song playing to Favorites, or remove it |
+| ⌘← / ⌘→ | Back / forward a page; also ⌘[ and ⌘], ⌥← and ⌥→ |
+| J / K | The next item of the page, or the one below / the one before, or above |
+| H / L | The item to the left / to the right |
+| Enter | Open the item, or play the song; Esc puts the marker away |
+| ⌘K, ⌘F, / | Search |
+| ⌥⇧H, ⌥⇧4, ⌥⇧3, ⌥⇧2, ⌥⇧S, ⌥⇧1, ⌥⇧D | Home, Albums, Artists, Songs, Favorites, Playlists, Downloads; ⌘1 … ⌘6 too |
+| ⌥⇧J | The album of the song playing |
+| ⌥⇧Q / ⌥⇧L | The queue / the lyrics |
+| V / F / ⇧⌘M | The record in the window / in full screen / in a small window |
+| ⌘B | Show or hide the sidebar |
+| ⇧⌘R | Update the library |
+| ⌘, | Settings |
 
 A double click on a song plays it; a right click on a song, an album or a
 theme opens its menu.
@@ -326,6 +366,9 @@ audio tests a file, and `AURELIA_TEST_DEVICE=1` plays it on the sound card.
 | `downloads.go` | what is kept for offline |
 | `update.go` | the app's own updates |
 | `proxy.go` | the proxy the app reaches the network through, and the one transport everything uses |
+| `keys.go` | the keyboard: one table of commands for the window, the menu bar and the page of shortcuts |
+| `remote.go` | playing on another device, and taking the orders of one |
+| `stage.go`, `spin.go` | the record: the cover turned by the app, the lyrics sliding up |
 | `tools/aurelia-proxy` | a proxy to run on a machine of your own, for this app only |
 | `nowplaying_darwin.go`, `nowplaying_linux.go`, `nowplaying_windows.go` | what plays, told to the system: Now Playing, MPRIS, and the System Media Transport Controls |
 | `images.go` | pictures: in memory, on disk, and from the server |

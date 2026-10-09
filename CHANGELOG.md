@@ -1,5 +1,31 @@
 # Changes
 
+## 0.2.0
+
+- The record: a button of the player's bar, or V, shows the song as its
+  cover turning like a record, with the lyrics sliding up line by line. F
+  puts it over the whole screen, and it goes to a small window of its own
+  that can be pinned above the others.
+- Play on another device: choose an Aurelia on another computer or one of
+  Jellyfin's apps, and control it from here. Aurelia takes the same
+  orders from them.
+- Keyboard shortcuts for everything, listed in the app (⌘/). Space plays
+  and pauses wherever the focus is, ⌘← and ⌘→ go back and forward, J and K
+  move over the items of a page. The next and previous song are now ⇧⌘→
+  and ⇧⌘←.
+- A new version is offered as Aurelia opens, on a page of its own, and
+  Aurelia reopens by itself once it is installed, signed in as before.
+- Home opens with the song to go on with among the albums played last,
+  which a right click takes out; then the artists you play most and your
+  playlists.
+- The sidebar comes back to the page each part of the library was left
+  at. It hides with its button or ⌘B, and its edge drags to resize it.
+- The window goes down to 480 by 420 and adapts: narrow, the sidebar is
+  put away and the player's bar keeps the buttons that play.
+- Playlists that other people of the server made public are hidden until
+  Settings ▸ Library asks for them.
+- Normalized volume has three levels: Louder, Normal and Quieter.
+
 ## 0.1.5
 
 - Errors of the network say what failed and why, in place of "The server

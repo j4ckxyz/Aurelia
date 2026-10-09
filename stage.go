@@ -387,6 +387,12 @@ func (a *App) stageCover(c *ui.Context, song *library.Song) {
 	if st.cover == key {
 		return
 	}
+	if a.covers != nil {
+		// Drawn in place of the server's, as the README's screenshots are.
+		pic := a.covers(song.ImageItem)
+		st.cover, st.turner, st.backdrop = key, newTurner(pic, 600), backdrop(pic)
+		return
+	}
 	cl := a.clientNow()
 	if cl == nil {
 		return

@@ -46,6 +46,7 @@ func TestScreenshots(t *testing.T) {
 		}
 		return art[id]
 	}
+	a.covers = func(id string) image.Image { return demoPicture(id) }
 	const width, height = 1240, 780
 	tt := ui.NewTester(a.view, width, height)
 	tt.SetScale(2)
@@ -101,6 +102,21 @@ func TestScreenshots(t *testing.T) {
 	shot("themes")
 	show("nord", "/downloads")
 	shot("downloads-nord")
+
+	// The record, a little turned, at a line of the song.
+	show("aurelia-dark", "/home")
+	a.openStage()
+	a.stage.angle, a.stage.pointerAt = 0.7, time.Now().Add(-time.Hour)
+	p.paused = false // the buttons hide while a song plays
+	tt.Frame()
+	shot("record")
+	p.paused = true
+	a.closeStage()
+
+	// The window at its smallest.
+	tt.SetSize(windowMinW, windowMinH)
+	show("aurelia-dark", "/album/al03")
+	shot("small")
 }
 
 // demoLibrary is a library of music that does not exist.
