@@ -79,6 +79,11 @@ type App struct {
 	scrub       float64
 	volumeDirty bool
 
+	// cursor is the marker the keys move over a page's items.
+	cursor cursor
+	// lastIn is the page each section of the sidebar was left at.
+	lastIn map[string]string
+
 	sizes      cacheSizes
 	updates    updates
 	connection connection

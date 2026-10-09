@@ -67,9 +67,16 @@ func (a *App) view(c *ui.Context) {
 		a.toastLayer(c, 16)
 		return
 	}
-	a.shortcuts(c)
+	a.cursor.begin(a.router.Location())
+	root := ui.Column(c).Fill()
+	a.shortcuts(c, root)
+	if a.cursor.wake {
+		a.cursor.wake = false
+		c.After(time.Millisecond) // the rows scrolled to are built in the next frame
+	}
+	a.remember()
 	a.tellSystem()
-	ui.Column(c).Fill().Children(func() {
+	root.Children(func() {
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.sidebar(c)
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
@@ -83,6 +90,48 @@ func (a *App) view(c *ui.Context) {
 		a.playerBar(c)
 	})
 	a.toastLayer(c, playerH+14)
+}
+
+// sections are the parts of the library the sidebar leads to: the page
+// each opens at, and what the pages inside it begin with.
+var sections = []struct{ root, under string }{
+	{"/home", ""}, {"/albums", "/album/"}, {"/artists", "/artist/"}, {"/songs", ""},
+	{"/favorites", ""}, {"/playlists", "/playlist/"}, {"/downloads", ""},
+}
+
+// sectionOf returns the section a page is in, "" for the pages of none.
+func sectionOf(path string) string {
+	for _, s := range sections {
+		if path == s.root || s.under != "" && strings.HasPrefix(path, s.under) {
+			return s.root
+		}
+	}
+	return ""
+}
+
+// remember keeps the page each section shows, for the sidebar to come
+// back to.
+func (a *App) remember() {
+	if sec := sectionOf(a.router.Path()); sec != "" {
+		if a.lastIn == nil {
+			a.lastIn = map[string]string{}
+		}
+		a.lastIn[sec] = a.router.Location()
+	}
+}
+
+// openSection shows a section where it was left; from inside it, its
+// first page.
+func (a *App) openSection(root string) {
+	if sectionOf(a.router.Path()) == root {
+		a.goTo(root)
+		return
+	}
+	if at := a.lastIn[root]; at != "" {
+		a.goTo(at)
+		return
+	}
+	a.goTo(root)
 }
 
 // toastLayer shows the app's messages in its own look, at the right
@@ -164,6 +213,9 @@ func (a *App) route(c *ui.Context, r *ui.Route) {
 	case r.Match("/settings"):
 		r.Title("Settings")
 		a.settingsPage(c)
+	case r.Match("/shortcuts"):
+		r.Title("Keyboard shortcuts")
+		a.shortcutsPage(c)
 	case r.Match("/theme/{id}"):
 		r.Title("Edit theme")
 		a.themeEditorPage(c, r.Param("id"))
@@ -176,29 +228,6 @@ func (a *App) route(c *ui.Context, r *ui.Route) {
 func (a *App) goTo(path string) {
 	if a.router.Location() != path {
 		a.router.Push(path)
-	}
-}
-
-// shortcuts are the keys of the window.
-func (a *App) shortcuts(c *ui.Context) {
-	p := a.player
-	switch {
-	case c.Shortcut(0, ui.KeySpace):
-		p.toggle()
-	case c.Shortcut(primary, ui.KeyRight):
-		p.skip()
-	case c.Shortcut(primary, ui.KeyLeft):
-		p.previous()
-	case c.Shortcut(primary, ui.KeyUp):
-		a.setVolume(a.settings.Volume + 0.05)
-	case c.Shortcut(primary, ui.KeyDown):
-		a.setVolume(a.settings.Volume - 0.05)
-	case c.Shortcut(primary, ui.KeyComma):
-		a.goTo("/settings")
-	case c.Shortcut(primary, ui.KeyF), c.Shortcut(primary, ui.KeyK), c.Shortcut(primary, ui.KeyL):
-		a.search.focus = true
-	case c.Shortcut(primary, ui.KeyR):
-		a.sync()
 	}
 }
 
@@ -297,7 +326,7 @@ func (a *App) sidebar(c *ui.Context) {
 			a.navItem(c, "mic-vocal", "Artists", "/artists", "/artist/")
 			a.navItem(c, "music", "Songs", "/songs", "")
 			a.navItem(c, "heart", "Favorites", "/favorites", "")
-			a.navItem(c, "list-music", "Playlists", "/playlists", "")
+			a.navItem(c, "list-music", "Playlists", "/playlists", "/playlist/")
 			a.navItem(c, "circle-arrow-down", "Downloads", "/downloads", "")
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(4, 10, 10).Gap(1).Children(func() {
@@ -365,7 +394,11 @@ func (a *App) navItem(c *ui.Context, glyph, label, path, under string) {
 		ui.Text(c, label).TextColor(fg).FontWeight(500).SingleLine().Grow(1).MinWidth(0)
 	})
 	if b.Clicked() {
-		a.goTo(path)
+		if sectionOf(path) == path {
+			a.openSection(path) // where it was left; clicked again, its first page
+		} else {
+			a.goTo(path)
+		}
 	}
 }
 

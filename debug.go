@@ -158,6 +158,15 @@ func (a *App) debug(dir, line string) {
 			time.Sleep(9 * time.Millisecond)
 		}
 		log.Printf("scroll %s ends", name)
+	case "do":
+		// "do next" runs a command of the keyboard by its name.
+		do(func() {
+			for i := range commands {
+				if commands[i].id == arg {
+					a.do(&commands[i])
+				}
+			}
+		})
 	case "proxy":
 		// "proxy socks5://host:1080" reaches the server through a proxy,
 		// "proxy" through none.

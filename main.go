@@ -204,12 +204,24 @@ func (a *App) menu() *mygo.Menu {
 			a.update(fn)
 		}}
 	}
-	page := func(label, accel, path string) *mygo.MenuItem {
-		return item(label, accel, func() {
-			if a.signedIn() {
-				a.goTo(path)
+	// The commands of a menu, with their keys.
+	of := func(title string) []*mygo.MenuItem {
+		var items []*mygo.MenuItem
+		for i := range commands {
+			if cmd := &commands[i]; cmd.menu == title {
+				accel := cmd.keys[0].accelerator()
+				switch cmd.id {
+				case "toggle":
+					accel = "" // Space is the window's: a menu would take it from what is typed
+				case "back", "onward":
+					// The brackets: the arrows with Command move in a
+					// field's text, which a menu would take them from.
+					accel = cmd.keys[1].accelerator()
+				}
+				items = append(items, item(cmd.label, accel, func() { a.do(cmd) }))
 			}
-		})
+		}
+		return items
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
@@ -229,41 +241,10 @@ func (a *App) menu() *mygo.Menu {
 			{Role: mygo.RoleCopy},
 			{Role: mygo.RolePaste},
 			{Role: mygo.RoleSelectAll},
-			mygo.Separator(),
-			item("Find", "CmdOrCtrl+F", func() { a.search.focus = true }),
 		}},
-		{Label: "View", Submenu: []*mygo.MenuItem{
-			page("Home", "CmdOrCtrl+1", "/home"),
-			page("Albums", "CmdOrCtrl+2", "/albums"),
-			page("Artists", "CmdOrCtrl+3", "/artists"),
-			page("Songs", "CmdOrCtrl+4", "/songs"),
-			page("Favorites", "CmdOrCtrl+5", "/favorites"),
-			page("Playlists", "CmdOrCtrl+6", "/playlists"),
-			mygo.Separator(),
-			item("Show Queue", "CmdOrCtrl+Shift+U", func() {
-				a.settings.QueueOpen = !a.settings.QueueOpen
-				a.saveSettings()
-			}),
-			page("Lyrics", "CmdOrCtrl+Shift+L", "/lyrics"),
-			mygo.Separator(),
-			page("Settings…", "CmdOrCtrl+,", "/settings"),
-			mygo.Separator(),
-			{Role: mygo.RoleToggleFullScreen},
-		}},
-		{Label: "Playback", Submenu: []*mygo.MenuItem{
-			item("Play / Pause", "", func() { a.player.toggle() }),
-			item("Next", "CmdOrCtrl+Right", func() { a.player.skip() }),
-			item("Previous", "CmdOrCtrl+Left", func() { a.player.previous() }),
-			mygo.Separator(),
-			item("Volume Up", "CmdOrCtrl+Up", func() { a.setVolume(a.settings.Volume + 0.05) }),
-			item("Volume Down", "CmdOrCtrl+Down", func() { a.setVolume(a.settings.Volume - 0.05) }),
-			mygo.Separator(),
-			item("Shuffle", "CmdOrCtrl+S", func() { a.player.setShuffle(!a.settings.Shuffle) }),
-			item("Repeat", "CmdOrCtrl+Shift+R", func() { a.player.cycleRepeat() }),
-		}},
-		{Label: "Library", Submenu: []*mygo.MenuItem{
-			item("Update Library", "CmdOrCtrl+R", func() { a.sync() }),
-		}},
+		{Label: "View", Submenu: append(of("View"), mygo.Separator(), &mygo.MenuItem{Role: mygo.RoleToggleFullScreen})},
+		{Label: "Playback", Submenu: of("Playback")},
+		{Label: "Library", Submenu: of("Library")},
 		{Role: mygo.RoleWindowMenu},
 	})
 }

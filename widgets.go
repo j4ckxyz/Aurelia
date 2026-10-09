@@ -66,6 +66,9 @@ func (a *App) tile(c *ui.Context, t tile) {
 	if t.menu != nil {
 		b.ContextMenu(t.menu)
 	}
+	if a.cursorItem(b, t.open) {
+		b.Background(p.surface)
+	}
 	switch {
 	case played:
 		t.play()
@@ -255,6 +258,9 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 		}
 		a.songMenu(m, s)
 	})
+	if a.cursorItem(row, r.play) {
+		row.Background(p.surface)
+	}
 	if (play || row.DoubleClicked()) && r.play != nil {
 		r.play()
 	}

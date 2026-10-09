@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -302,7 +303,7 @@ func TestKeysAndHover(t *testing.T) {
 	if paused() {
 		t.Error("Space did not play on")
 	}
-	tt.Key(primary, ui.KeyRight)
+	tt.Key(primary|ui.Shift, ui.KeyRight)
 	if a.player.current().ID != "s2" {
 		t.Errorf("the next-song key: at %s", a.player.current().ID)
 	}
@@ -550,4 +551,140 @@ func TestDownloads(t *testing.T) {
 	}
 	tt.Frame()
 	wantTexts(t, tt, "Nothing downloaded")
+}
+
+// Space plays and pauses wherever the focus is, a button clicked last
+// included; the arrows with Command go back and forward; and the sidebar
+// comes back to where a section was left.
+func TestShortcutsAndSections(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.player.play(a.lib.AlbumSongs("al1"), 0)
+	tt.Frame()
+	click(t, tt, "Albums")
+	tt.Frame()
+	tt.Key(0, ui.KeySpace)
+	tt.Frame()
+	if !a.player.paused || a.router.Path() != "/albums" {
+		t.Errorf("Space after a click: paused %v, at %s", a.player.paused, a.router.Path())
+	}
+	tt.Key(0, ui.KeySpace)
+	tt.Frame()
+
+	// An artist's page, then Albums, then Artists again: the artist's.
+	click(t, tt, "Artists")
+	tt.Frame()
+	click(t, tt, "Beyoncé")
+	tt.Frame()
+	if a.router.Path() != "/artist/ar2" {
+		t.Fatalf("at %s, not the artist's page", a.router.Path())
+	}
+	click(t, tt, "Albums")
+	tt.Frame()
+	click(t, tt, "Artists")
+	tt.Frame()
+	if a.router.Path() != "/artist/ar2" {
+		t.Errorf("Artists again: at %s, not where it was left", a.router.Path())
+	}
+	// Clicked from inside the section, its first page.
+	click(t, tt, "Artists")
+	tt.Frame()
+	if a.router.Path() != "/artists" {
+		t.Errorf("Artists clicked twice: at %s", a.router.Path())
+	}
+
+	tt.Key(primary, ui.KeyLeft)
+	tt.Frame()
+	if a.router.Path() != "/artist/ar2" {
+		t.Errorf("Command+Left: at %s", a.router.Path())
+	}
+	tt.Key(primary, ui.KeyRight)
+	tt.Frame()
+	if a.router.Path() != "/artists" {
+		t.Errorf("Command+Right: at %s", a.router.Path())
+	}
+	tt.Key(ui.Shift, ui.KeyRight)
+	tt.Key(0, ui.KeyM)
+	tt.Frame()
+	if !a.settings.Muted {
+		t.Error("M did not mute")
+	}
+	tt.Key(primary, ui.KeySlash)
+	tt.Frame()
+	wantTexts(t, tt, "Keyboard shortcuts", "Play or pause", "Space", "The next item, or the one below")
+}
+
+// J and K move a marker over the items of a page, Enter opens the one
+// it is on, and the list scrolls to keep it in view.
+func TestMarker(t *testing.T) {
+	a := testApp(t)
+	// A library of many albums, more than a window shows.
+	d := library.Data{Version: 1, Artists: []library.Artist{{ID: "ar", Name: "Band"}}}
+	for i := 0; i < 120; i++ {
+		id := fmt.Sprintf("al%03d", i)
+		d.Albums = append(d.Albums, library.Album{ID: id, Name: fmt.Sprintf("Album %03d", i), Artist: "Band", ArtistIDs: []string{"ar"}})
+		d.Songs = append(d.Songs, library.Song{ID: "s" + id, Name: "Song of " + id, Album: fmt.Sprintf("Album %03d", i), AlbumID: id, Artist: "Band", Track: 1, Seconds: 100})
+	}
+	a.setLibrary(library.Build(d))
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.router.Push("/albums")
+	tt.Frame()
+	cols := 0
+	for range 3 {
+		tt.Frame()
+	}
+	press := func(key ui.Key, n int) {
+		for range n {
+			tt.Key(0, key)
+			for range 4 {
+				tt.Frame() // the rows scrolled to are built in the frames after
+			}
+		}
+	}
+	press(ui.KeyJ, 1)
+	if !a.cursor.shown || a.cursor.row != 1 || a.cursor.col != 0 {
+		t.Fatalf("after J: %+v", a.cursor)
+	}
+	for _, it := range a.cursor.last {
+		if it.row == 1 {
+			cols++
+		}
+	}
+	press(ui.KeyL, 2)
+	press(ui.KeyJ, 1)
+	if a.cursor.row != 2 || a.cursor.col != 2 {
+		t.Errorf("right twice and down: row %d, place %d", a.cursor.row, a.cursor.col)
+	}
+	press(ui.KeyK, 1)
+	press(ui.KeyH, 1)
+	if a.cursor.row != 1 || a.cursor.col != 1 {
+		t.Errorf("up and left: row %d, place %d", a.cursor.row, a.cursor.col)
+	}
+	// Far down the page, past what the window showed at first.
+	press(ui.KeyJ, 14)
+	if a.cursor.row != 15 {
+		t.Errorf("down fourteen rows: at row %d", a.cursor.row)
+	}
+	want := fmt.Sprintf("Album %03d", 14*cols+1)
+	if !tt.HasText(want) {
+		t.Errorf("%s, where the marker is, does not show", want)
+	}
+	press(ui.KeyEnter, 1)
+	if got := a.router.Path(); got != fmt.Sprintf("/album/al%03d", 14*cols+1) {
+		t.Errorf("Enter: at %s", got)
+	}
+	// In a list of songs, Enter plays.
+	a.router.Push("/songs")
+	for range 3 {
+		tt.Frame()
+	}
+	press(ui.KeyJ, 3)
+	press(ui.KeyEnter, 1)
+	if s := a.player.current(); s == nil || s.ID != "sal002" {
+		t.Errorf("Enter on the third song: playing %v", s)
+	}
+	press(ui.KeyEscape, 1)
+	if a.cursor.shown {
+		t.Error("Escape left the marker")
+	}
 }

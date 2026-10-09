@@ -21,6 +21,7 @@ type pageStates struct {
 	artistList    sorted[*library.Artist]
 	songs, titles sorted[*library.Song]
 	rows          map[string]*rowList
+	lists         map[string]*ui.ListState
 	// The places of the long lists, which stay as other pages show.
 	albumList, artistsList, songList, queueList ui.ListState
 	queueChosen                                 int
@@ -69,7 +70,31 @@ func (a *App) rowsKey(c *ui.Context) string {
 
 // list shows rows in a list that builds only those in view.
 func (a *App) list(c *ui.Context, rows []func(c *ui.Context)) {
-	ui.List(c, nil, len(rows), func(i int) { rows[i](c) }).Grow(1).MinHeight(0).Padding(0, 0, 28)
+	st := a.pageList()
+	ui.List(c, st, len(rows), func(i int) {
+		a.cursor.in(st, i)
+		rows[i](c)
+		a.cursor.in(nil, 0)
+	}).Grow(1).MinHeight(0).Padding(0, 0, 28)
+}
+
+// pageList is the place of the list of the page showing, kept while
+// the pages of the history are: coming back to one finds it where it
+// was left.
+func (a *App) pageList() *ui.ListState {
+	at := a.router.Location()
+	st := a.pages.lists[at]
+	if st == nil {
+		if len(a.pages.lists) > 32 {
+			clear(a.pages.lists)
+		}
+		if a.pages.lists == nil {
+			a.pages.lists = map[string]*ui.ListState{}
+		}
+		st = &ui.ListState{}
+		a.pages.lists[at] = st
+	}
+	return st
 }
 
 // tileRows adds the rows of a grid of n tiles.
@@ -255,6 +280,8 @@ func (a *App) albumsPage(c *ui.Context) {
 	}
 	n := 1 + (len(albums)+cols-1)/cols
 	ui.List(c.Key("albums"), &a.pages.albumList, n, func(i int) {
+		a.cursor.in(&a.pages.albumList, i)
+		defer a.cursor.in(nil, 0)
 		if i == 0 {
 			a.pageTitle(c, "Albums", count(len(albums), "album", "albums"), func() {
 				if a.sortSelect(c, "album-sort", &a.settings.AlbumSort, albumSorts) {
@@ -289,6 +316,8 @@ func (a *App) artistsPage(c *ui.Context) {
 	cols := a.columns(c)
 	n := 1 + (len(artists)+cols-1)/cols
 	ui.List(c.Key("artists"), &a.pages.artistsList, n, func(i int) {
+		a.cursor.in(&a.pages.artistsList, i)
+		defer a.cursor.in(nil, 0)
 		if i == 0 {
 			a.pageTitle(c, "Artists", count(len(artists), "artist", "artists"), nil)
 			return
@@ -357,6 +386,8 @@ func (a *App) songsPage(c *ui.Context) {
 	}
 	songs := a.songsBy(a.settings.SongSort)
 	ui.List(c.Key("songs"), &a.pages.songList, 2+len(songs), func(i int) {
+		a.cursor.in(&a.pages.songList, i)
+		defer a.cursor.in(nil, 0)
 		switch i {
 		case 0:
 			a.pageTitle(c, "Songs", count(len(songs), "song", "songs"), func() {
