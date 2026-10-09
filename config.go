@@ -60,6 +60,19 @@ type Settings struct {
 	SidebarW      int  `json:"sidebarW,omitempty"`
 	// MiniPinned keeps the small window of the record above the others.
 	MiniPinned bool `json:"miniPinned,omitempty"`
+	// Tray shows an icon in the menu bar or the tray, and Notify a
+	// notification as the song changes while the window is not in front.
+	Tray   bool `json:"tray,omitempty"`
+	Notify bool `json:"notify,omitempty"`
+	// Scrobble sends plays to ListenBrainz, or to the server at
+	// ListenBrainzURL that speaks as it does, with the user's token.
+	Scrobble          bool   `json:"scrobble,omitempty"`
+	ListenBrainzToken string `json:"lbToken,omitempty"`
+	ListenBrainzURL   string `json:"lbURL,omitempty"`
+	// Lrclib looks up lyrics the server lacks on LRCLIB (at LrclibURL
+	// when set), which is told the song's artist, title, album and length.
+	Lrclib    bool   `json:"lrclib,omitempty"`
+	LrclibURL string `json:"lrclibURL,omitempty"`
 	// Autoplay goes on with songs like the last when the queue ends.
 	Autoplay bool `json:"autoplay,omitempty"`
 	// Motion is "" to follow the system's Reduce motion, "on" or "reduced".

@@ -400,6 +400,18 @@ func (a *App) debug(dir, line string) {
 		})
 		_ = ids
 		time.Sleep(3 * time.Second)
+	case "desktop":
+		// "desktop tray on|off", "desktop notify on|off"
+		do(func() {
+			what, on, _ := strings.Cut(arg, " ")
+			switch what {
+			case "tray":
+				a.settings.Tray = on == "on"
+			case "notify":
+				a.settings.Notify = on == "on"
+			}
+			a.told = ""
+		})
 	case "front":
 		// A covered window paints no frames, so a shot would show an old
 		// one: the window is brought forward.

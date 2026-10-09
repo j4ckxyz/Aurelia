@@ -183,6 +183,17 @@ func (a *App) settingsPage(c *ui.Context) {
 						a.saveSettings()
 					}
 				})
+				a.setting(c, "Look up missing lyrics", "When the server has no lyrics for a song, ask LRCLIB, a free database of them. It is told the song's artist, title, album and length, and nothing else.", func() {
+					if ui.Switch(c.Key("lrclib"), &a.settings.Lrclib).Label("Look up missing lyrics").Changed() {
+						a.lyrics.asked = map[string]bool{} // songs without lyrics are asked of it now
+						for id, lines := range a.lyrics.bySong {
+							if len(lines) == 0 {
+								delete(a.lyrics.bySong, id)
+							}
+						}
+						a.saveSettings()
+					}
+				})
 				a.setting(c, "Keep playing similar songs", "When the queue ends, go on with songs the server finds like the last one. Off, the music stops.", func() {
 					if ui.Switch(c.Key("autoplay"), &a.settings.Autoplay).Label("Keep playing similar songs").Changed() {
 						a.player.armNext() // the song playing may be the last
@@ -254,6 +265,22 @@ func (a *App) settingsPage(c *ui.Context) {
 				}
 			})
 
+			a.settingsHead(c, "Desktop")
+			a.card(c, func() {
+				a.setting(c, "Icon in the "+trayName(), "Shows the song and its buttons from the "+trayName()+"; closing the window leaves the music playing.", func() {
+					if ui.Switch(c.Key("tray"), &a.settings.Tray).Label("Icon in the " + trayName()).Changed() {
+						a.saveSettings()
+						a.told = "" // so that the next frame draws it
+					}
+				})
+				a.setting(c, "Notify of the song", "A notification as the song changes, while Aurelia is not the window in front.", func() {
+					if ui.Switch(c.Key("notify"), &a.settings.Notify).Label("Notify of the song").Changed() {
+						a.saveSettings()
+					}
+				})
+			})
+			a.settingsHead(c, "Scrobbling")
+			a.card(c, func() { a.scrobbleSettings(c) })
 			a.settingsHead(c, "Connection")
 			a.connectionCard(c)
 

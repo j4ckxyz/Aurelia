@@ -89,14 +89,12 @@ Library
       or add to a playlist together.
 - [ ] An artist's most played songs and similar artists on their page.
 - [ ] Pin albums and playlists to the sidebar.
-- [ ] Lyrics fetched from LRCLIB when the server has none.
 
 Desktop
 
-- [ ] An icon in the menu bar or tray with the song and its buttons, and
-      the app kept running with its window closed.
-- [ ] A notification when the song changes.
-- [ ] Scrobbling to Last.fm and ListenBrainz.
+- [ ] Scrobbling to Last.fm. *(ListenBrainz is done; Last.fm asks each
+      user for an API key and secret of their own, which is more to set up
+      than it is worth until asked for again)*
 - [ ] Discord shows what plays.
 - [ ] A visualizer on the record.
 - [ ] A year in review: what you played most.
@@ -279,6 +277,37 @@ Each entry is written as:
       real server**, which is only read here: the Jellyfin calls are those
       of its API as documented (the rename call needs Jellyfin 10.9 or
       later).
+- [x] **Lyrics from LRCLIB when the server has none** (2026-10-09):
+      Settings ▸ Playback ▸ "Look up missing lyrics" (off unless you turn it
+      on, as it tells LRCLIB the artist, title, album and length of the song):
+      timed lyrics where it has them, else plain; a song with a .lrc on the
+      server keeps the server's. Verified: the parser on LRC with tags,
+      several times on one line and untimed text; the request and each kind
+      of answer against a made-up server; the fallback flow; and one call to
+      the real lrclib.net, whose answer for a well-known song has the shape
+      the parser reads.
+- [x] **An icon in the menu bar or the tray, and a notification as the song
+      changes** (2026-10-09): Settings ▸ Desktop. The icon (the jellyfish,
+      black for the menu bar to tint, in the accent elsewhere) opens a menu
+      with the song, Play or Pause, Next, Previous, Show Aurelia and Quit; on
+      Windows and Linux closing the window then leaves the music playing, as
+      on macOS already. Verified on macOS in the running app: the status
+      item exists, its menu names the song and changes with Next and Pause,
+      it goes when turned off, and clicking Next in it moved playback to the
+      next song. **Not verified:** the tray on Windows and Linux (it is
+      MyGo's, built for both and vetted); the notification, which macOS only
+      shows for a bundled app (the dev build says "not supported on this
+      platform" and carries on).
+- [x] **Scrobbling to ListenBrainz** (2026-10-09): Settings ▸ Scrobbling:
+      your user token (checked, and shown as "Signed in as …"), and a server
+      address for one of your own. The song playing is sent as it begins, and
+      once more when half of it (or four minutes) has played, never for songs
+      under thirty seconds or ones skipped early, and again for a repeat;
+      what could not be sent is kept, up to a hundred, and tried each minute.
+      Verified by tests of the counting (half, four minutes, skipping, short
+      songs, pauses, stalls, repeats) and of the requests against a made-up
+      ListenBrainz (the body, the token, a batch after a failure). **Not
+      tried against listenbrainz.org**, for want of an account.
 - [x] **An equalizer** (2026-10-09): ten bands from 31 Hz to 16 kHz and a
       preamp, 14 presets and presets of your own (saved, named, deleted),
       one switch, kept between runs, with a curve drawn over the sliders.

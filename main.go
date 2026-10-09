@@ -51,7 +51,9 @@ func main() {
 	mygo.App.OnWindowAllClosed(func() {
 		// On macOS the music plays on with the window closed, as in
 		// the system's own player.
-		if runtime.GOOS != "darwin" {
+		// With an icon in the tray it is the same elsewhere: the music
+		// plays on, and the icon opens the window again.
+		if runtime.GOOS != "darwin" && !a.settings.Tray {
 			mygo.App.Quit()
 		}
 	})
@@ -145,6 +147,7 @@ func (a *App) keepHouse() {
 			}
 			a.watchOutput()
 			a.player.tickSleep(time.Now())
+			a.scrobbleTick(time.Now())
 			// What a device playing in this computer's place does.
 			if f := a.player.far; f != nil && time.Since(f.polledAt) >= farPoll {
 				a.pollFar()

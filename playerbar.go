@@ -429,7 +429,8 @@ type lyricsState struct {
 }
 
 // lines returns the lyrics of a song, nil while they come or when it has
-// none, and whether the server answered.
+// none, and whether the answer is known. The server's come first; when it
+// has none and the settings allow it, LRCLIB is asked.
 func (a *App) lyricLines(s *library.Song) (lines []jellyfin.LyricLine, known bool) {
 	ly := &a.lyrics
 	if ly.bySong == nil {
@@ -438,10 +439,16 @@ func (a *App) lyricLines(s *library.Song) (lines []jellyfin.LyricLine, known boo
 	if lines, ok := ly.bySong[s.ID]; ok {
 		return lines, true
 	}
+	cl := a.clientNow()
 	if !s.HasLyrics {
+		if a.settings.Lrclib && cl != nil && !ly.asked[s.ID] {
+			ly.asked[s.ID] = true
+			a.fetchLyrics(s, nil)
+			return nil, false
+		}
 		return nil, true
 	}
-	if cl := a.clientNow(); cl != nil && !ly.asked[s.ID] {
+	if cl != nil && !ly.asked[s.ID] {
 		ly.asked[s.ID] = true
 		id := s.ID
 		go func() {
@@ -451,13 +458,37 @@ func (a *App) lyricLines(s *library.Song) (lines []jellyfin.LyricLine, known boo
 			a.update(func() {
 				if err != nil {
 					delete(ly.asked, id) // asked again when the page shows again
-					lines = nil
+					return
+				}
+				if len(lines) == 0 && a.settings.Lrclib {
+					a.fetchLyrics(s, lines)
+					return
 				}
 				ly.bySong[id] = lines
 			})
 		}()
 	}
 	return nil, false
+}
+
+// fetchLyrics asks LRCLIB for a song's lyrics; what it finds is kept for
+// the session, nothing when it has none (instead of the server's own).
+func (a *App) fetchLyrics(s *library.Song, fallback []jellyfin.LyricLine) {
+	ly := &a.lyrics
+	id, base := s.ID, a.settings.LrclibURL
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		lines, err := lrclibLyrics(ctx, base, s)
+		a.update(func() {
+			if err != nil {
+				delete(ly.asked, id)
+				ly.bySong[id] = fallback
+				return
+			}
+			ly.bySong[id] = lines
+		})
+	}()
 }
 
 // lyricsPage shows the song playing large, with its lyrics, the line

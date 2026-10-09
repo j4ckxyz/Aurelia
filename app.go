@@ -97,6 +97,12 @@ type App struct {
 	stage stage
 	// browse is the genres and the decades of the library.
 	browse facets
+	// scrobble is what is told of the songs heard; lbDirty a change of its
+	// settings not kept yet.
+	scrobble scrobbleState
+	lbDirty  bool
+	// desk is what is shown outside the window.
+	desk desktopState
 	// prompt is a question the user answers.
 	prompt promptState
 	// info is the dialog of a song's details.
@@ -611,6 +617,7 @@ func (a *App) tellSystem() {
 		return
 	}
 	a.told, a.toldAt, a.toldFrom = key, time.Now(), st.Position
+	a.desktopSync(s, st.Paused)
 	func() {
 		defer func() {
 			if err := recover(); err != nil {

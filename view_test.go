@@ -353,7 +353,7 @@ func queueIDs(p *player) string {
 // Signed out, the window asks to sign in; signing out empties it.
 func TestSignedOut(t *testing.T) {
 	a := testApp(t)
-	tt := ui.NewTester(a.view, 1240, 2000) // tall enough for all the settings
+	tt := ui.NewTester(a.view, 1240, 3200) // tall enough for all the settings
 	a.router.Push("/settings")
 	tt.Frame()
 	click(t, tt, "Sign out")
