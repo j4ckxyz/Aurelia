@@ -97,6 +97,8 @@ type App struct {
 	stage stage
 	// browse is the genres and the decades of the library.
 	browse facets
+	// prompt is a question the user answers.
+	prompt promptState
 	// info is the dialog of a song's details.
 	info infoState
 	// share is the picture being made of a song or an album.

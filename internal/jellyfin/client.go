@@ -476,6 +476,58 @@ func (c *Client) MediaInfo(ctx context.Context, id string) (*Item, error) {
 	return &it, err
 }
 
+// InstantMix returns songs like an item: kind is "Songs", "Albums",
+// "Artists" or "Playlists", and id the item's. The server picks them, the
+// item's own among them for songs.
+func (c *Client) InstantMix(ctx context.Context, kind, id string, limit int) ([]Item, error) {
+	q := c.userQuery()
+	q.Set("Limit", strconv.Itoa(limit))
+	q.Set("Fields", "DateCreated,Genres")
+	var res itemsResult
+	err := c.do(ctx, "GET", "/"+kind+"/"+id+"/InstantMix", q, nil, &res)
+	return res.Items, err
+}
+
+// CreatePlaylist makes a playlist of songs, which may be none, and returns
+// its ID.
+func (c *Client) CreatePlaylist(ctx context.Context, name string, songIDs []string) (string, error) {
+	body := map[string]any{"Name": name, "Ids": songIDs, "UserId": c.UserID, "MediaType": "Audio"}
+	var res struct {
+		ID string `json:"Id"`
+	}
+	err := c.do(ctx, "POST", "/Playlists", nil, body, &res)
+	return res.ID, err
+}
+
+// AddToPlaylist adds songs to the end of a playlist.
+func (c *Client) AddToPlaylist(ctx context.Context, id string, songIDs []string) error {
+	q := c.userQuery()
+	q.Set("ids", strings.Join(songIDs, ","))
+	return c.do(ctx, "POST", "/Playlists/"+id+"/Items", q, nil, nil)
+}
+
+// RemoveFromPlaylist takes songs out of a playlist, by their entries in it
+// (Item.PlaylistItemID).
+func (c *Client) RemoveFromPlaylist(ctx context.Context, id string, entryIDs []string) error {
+	q := url.Values{"entryIds": {strings.Join(entryIDs, ",")}}
+	return c.do(ctx, "DELETE", "/Playlists/"+id+"/Items", q, nil, nil)
+}
+
+// RenamePlaylist gives a playlist another name.
+func (c *Client) RenamePlaylist(ctx context.Context, id, name string) error {
+	return c.do(ctx, "POST", "/Playlists/"+id, nil, map[string]any{"Name": name}, nil)
+}
+
+// DeletePlaylist removes a playlist from the server, never the songs in it.
+func (c *Client) DeletePlaylist(ctx context.Context, id string) error {
+	return c.do(ctx, "DELETE", "/Items/"+id, nil, nil, nil)
+}
+
+// MoveInPlaylist moves a song of a playlist, by its entry, to a place.
+func (c *Client) MoveInPlaylist(ctx context.Context, id, entryID string, index int) error {
+	return c.do(ctx, "POST", "/Playlists/"+id+"/Items/"+entryID+"/Move/"+strconv.Itoa(index), nil, nil, nil)
+}
+
 // SearchSongs asks the server for the songs matching a term, for
 // libraries whose songs Aurelia has not listed yet.
 func (c *Client) SearchSongs(ctx context.Context, term string, limit int) ([]Item, error) {

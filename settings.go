@@ -183,6 +183,12 @@ func (a *App) settingsPage(c *ui.Context) {
 						a.saveSettings()
 					}
 				})
+				a.setting(c, "Keep playing similar songs", "When the queue ends, go on with songs the server finds like the last one. Off, the music stops.", func() {
+					if ui.Switch(c.Key("autoplay"), &a.settings.Autoplay).Label("Keep playing similar songs").Changed() {
+						a.player.armNext() // the song playing may be the last
+						a.saveSettings()
+					}
+				})
 				if time.Since(a.output.readAt) > outputMaxAge {
 					a.readOutputs(a.settleOutput) // what is plugged in changes
 				}

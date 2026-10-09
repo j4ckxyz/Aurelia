@@ -82,15 +82,9 @@ not asked for one by one: strike out what is not wanted.
 
 Playing
 
-- [ ] Song radio: "Start Radio" on a song, album or artist, from the
-      server's instant mix.
-- [ ] Go on with similar songs when the queue ends.
-- [ ] Save the queue as a playlist, and clear it.
 
 Library
 
-- [ ] Playlists made and changed here: new, rename, delete, "Add to
-      Playlist" in the menus, songs dragged into another order.
 - [ ] Select several songs (shift and ⌘ click) to queue, download, like
       or add to a playlist together.
 - [ ] An artist's most played songs and similar artists on their page.
@@ -262,6 +256,29 @@ Each entry is written as:
       Songs ▸ sort by Recently Played, Most Played and Never Played (which
       lists only the songs not played). Verified by tests, including a
       song moving to the head as it is played.
+- [x] **Song radio, and going on with similar songs** (2026-10-09): "Start
+      Radio" in the menus of songs, albums and artists (and on an artist's
+      page): fifty songs the server picks as being like it, the song first.
+      Settings ▸ Playback ▸ "Keep playing similar songs" (off unless you
+      turn it on): when the last song of the queue plays, songs like it are
+      added after it, once, without those already in the queue, and not
+      past a sleep timer. Verified: the real server's instant mixes of a
+      song and an album were read and mapped into the library (12 songs
+      each); tests with a made-up server check the request, the seed
+      first, songs the library lacks being left out, asking only once, and
+      the sleep timer still stopping the music.
+- [x] **Playlists made and changed here** (2026-10-09): "Add to Playlist"
+      (a submenu, with "New Playlist…") in the menus of songs and albums; a
+      "New playlist" button on the Playlists page (also when there are
+      none); on a playlist's page, Rename… and Delete Playlist… (asks
+      first; the songs stay) in its menu, and Move Up, Move Down and
+      Remove from This Playlist in each song's menu; "Save" in the queue
+      keeps the queue as a playlist. Verified by tests that drive the real
+      menus and dialogs against a server that records every request: the
+      method, the path, the query and the body of each. **Not tried on the
+      real server**, which is only read here: the Jellyfin calls are those
+      of its API as documented (the rename call needs Jellyfin 10.9 or
+      later).
 - [x] **An equalizer** (2026-10-09): ten bands from 31 Hz to 16 kHz and a
       preamp, 14 presets and presets of your own (saved, named, deleted),
       one switch, kept between runs, with a curve drawn over the sliders.

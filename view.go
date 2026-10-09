@@ -125,6 +125,7 @@ func (a *App) view(c *ui.Context) {
 	}
 	a.shareDialog(c)
 	a.infoDialog(c)
+	a.promptDialog(c)
 	a.toastLayer(c, bottom)
 }
 
@@ -697,6 +698,7 @@ func (a *App) songMenu(m *ui.Menu, s *library.Song) {
 		a.player.enqueue([]*library.Song{s})
 		a.toast("Added to the queue")
 	}
+	a.addToPlaylistMenu(m, []*library.Song{s}, s.Name, "")
 	m.Separator()
 	if s.AlbumID != "" && m.Item("Go to Album").Chosen() {
 		a.goTo("/album/" + s.AlbumID)
@@ -707,6 +709,9 @@ func (a *App) songMenu(m *ui.Menu, s *library.Song) {
 	m.Separator()
 	if m.Item("Share as a Picture…").Chosen() {
 		a.shareSong(s)
+	}
+	if m.Item("Start Radio").Chosen() {
+		a.startRadio("Songs", s.ID, s.Name, s)
 	}
 	if m.Item("Song Info…").Chosen() {
 		a.openInfo(s)
@@ -744,9 +749,13 @@ func (a *App) albumMenu(m *ui.Menu, al *library.Album) {
 		a.player.enqueue(songs)
 		a.toast("Added to the queue")
 	}
+	a.addToPlaylistMenu(m, songs, al.Name, "")
 	m.Separator()
 	if id := a.artistOf(al.ArtistIDs); id != "" && m.Item("Go to Artist").Chosen() {
 		a.goTo("/artist/" + id)
+	}
+	if m.Item("Start Radio").Chosen() {
+		a.startRadio("Albums", al.ID, al.Name, nil)
 	}
 	if m.Item("Share as a Picture…").Chosen() {
 		a.shareAlbum(al)

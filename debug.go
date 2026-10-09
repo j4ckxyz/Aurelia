@@ -378,6 +378,28 @@ func (a *App) debug(dir, line string) {
 			}
 		})
 		os.WriteFile(filepath.Join(dir, "info"), []byte(out), 0o644)
+	case "mix":
+		// "mix Songs" asks the server for songs like the one playing, "mix
+		// Albums" like its album; the first are written to the file "mix".
+		kind := strings.TrimSpace(arg)
+		var ids []string
+		do(func() {
+			if s := a.player.current(); s != nil {
+				id := s.ID
+				if kind == "Albums" {
+					id = s.AlbumID
+				}
+				a.mixOf(kind, id, 12, func(songs []*library.Song, err error) {
+					out := fmt.Sprintf("err=%v n=%d\n", err, len(songs))
+					for _, sg := range songs {
+						out += sg.Name + " — " + sg.Artist + "\n"
+					}
+					os.WriteFile(filepath.Join(dir, "mix"), []byte(out), 0o644)
+				})
+			}
+		})
+		_ = ids
+		time.Sleep(3 * time.Second)
 	case "front":
 		// A covered window paints no frames, so a shot would show an old
 		// one: the window is brought forward.

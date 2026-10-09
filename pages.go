@@ -690,6 +690,7 @@ func (a *App) artistPage(c *ui.Context, r *ui.Route) {
 				play:     func() { a.player.play(songs, 0) },
 				shuffle:  func() { a.player.playShuffled(songs) },
 				favorite: &ar.Favorite, favoriteID: ar.ID,
+				menu: func(m *ui.Menu) { a.artistMenu(m, ar) },
 			})
 		})
 		// What was played most, where anything was.
@@ -787,6 +788,7 @@ func (a *App) fetchPlaylist(id string, then func([]*library.Song)) {
 				continue // playlists may hold videos too
 			}
 			s := library.SongOf(&items[i])
+			s.Entry = items[i].PlaylistItemID
 			library.PrepareSong(&s)
 			songs = append(songs, &s)
 		}
@@ -814,17 +816,32 @@ func (a *App) playlists() []*library.Playlist {
 func (a *App) playlistsPage(c *ui.Context) {
 	playlists := a.playlists()
 	if len(playlists) == 0 {
-		detail := "Playlists made in Jellyfin show here."
+		detail := "Make one here, or in Jellyfin: playlists show on every device."
 		if len(a.lib.Playlists) > 0 {
 			detail = "The server has playlists that others made public: Settings can show them."
 		}
-		a.loadingOr(c, "list-music", "No playlists", detail)
+		if a.syncing && a.lib.IsEmpty() {
+			a.loadingOr(c, "list-music", "No playlists", detail)
+			return
+		}
+		ui.Column(c).Grow(1).Children(func() {
+			a.pageTitle(c, "Playlists", "", func() {
+				if a.pillButton(c, "plus", "New playlist", false).Clicked() {
+					a.newPlaylist(nil, "")
+				}
+			})
+			a.emptyState(c, "list-music", "No playlists", detail)
+		})
 		return
 	}
 	cols := a.columns(c)
 	rows := a.rows(c, "/playlists", fmt.Sprint(a.settings.OthersPlaylists), func(add func(func(c *ui.Context))) {
 		add(func(c *ui.Context) {
-			a.pageTitle(c, "Playlists", count(len(playlists), "playlist", "playlists"), nil)
+			a.pageTitle(c, "Playlists", count(len(playlists), "playlist", "playlists"), func() {
+				if a.pillButton(c, "plus", "New playlist", false).Clicked() {
+					a.newPlaylist(nil, "")
+				}
+			})
 		})
 		tileRows(add, len(playlists), cols, func(c *ui.Context, i int) { a.playlistTile(c, playlists[i]) })
 	})
@@ -879,6 +896,16 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 					}
 				},
 			}
+			if !pl.Others {
+				h.menu = func(m *ui.Menu) {
+					if m.Item("Rename…").Chosen() {
+						a.renamePlaylist(pl)
+					}
+					if m.Item("Delete Playlist…").Chosen() {
+						a.deletePlaylist(pl)
+					}
+				}
+			}
 			if len(songs) > 0 {
 				h.play = func() { a.player.play(songs, 0) }
 				h.shuffle = func() { a.player.playShuffled(songs) }
@@ -910,7 +937,23 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 			add(func(c *ui.Context) { a.listHeader(c, "", true) })
 			for i, s := range songs {
 				add(func(c *ui.Context) {
-					a.songRow(c.Key(fmt.Sprint(i, s.ID)), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }})
+					row := songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }}
+					if !pl.Others && fetched[i].Entry != "" {
+						entry := fetched[i]
+						row.extra = func(m *ui.Menu) {
+							if i > 0 && m.Item("Move Up").Chosen() {
+								a.moveInPlaylist(pl, entry, i-1)
+							}
+							if i < len(fetched)-1 && m.Item("Move Down").Chosen() {
+								a.moveInPlaylist(pl, entry, i+1)
+							}
+							if m.Item("Remove from This Playlist").Chosen() {
+								a.removeFromPlaylist(pl, entry)
+							}
+							m.Separator()
+						}
+					}
+					a.songRow(c.Key(fmt.Sprint(i, s.ID)), row)
 				})
 			}
 		}

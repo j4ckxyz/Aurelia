@@ -71,6 +71,9 @@ type Song struct {
 	Added      int64   `json:"added,omitempty"`
 	GainDB     float64 `json:"gain,omitempty"`
 	HasLyrics  bool    `json:"lyrics,omitempty"`
+	// Entry is the song's place in the playlist it was read from, which
+	// the server asks for to take it out; "" outside a playlist.
+	Entry string `json:"-"`
 
 	nameKey, extraKey string
 	// SortKey, ArtistKey and AlbumKey order songs by title, artist and
@@ -230,6 +233,19 @@ func (l *Library) Song(id string) *Song { return l.songs[id] }
 
 // Playlist returns the playlist of an ID, or nil.
 func (l *Library) Playlist(id string) *Playlist { return l.playlists[id] }
+
+// SetPlaylists replaces the playlists, as when the user made, changed or
+// removed one.
+func (l *Library) SetPlaylists(list []Playlist) {
+	for i := range list {
+		list[i].nameKey = Fold(list[i].Name)
+	}
+	l.Playlists = list
+	l.playlists = make(map[string]*Playlist, len(list))
+	for i := range l.Playlists {
+		l.playlists[l.Playlists[i].ID] = &l.Playlists[i]
+	}
+}
 
 // AlbumSongs returns an album's songs, in its order.
 func (l *Library) AlbumSongs(id string) []*Song { return l.albumSongs[id] }

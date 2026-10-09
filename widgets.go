@@ -98,6 +98,7 @@ func (a *App) artistTile(c *ui.Context, ar *library.Artist) {
 		sub:  count(len(a.lib.ArtistAlbums(ar.ID)), "album", "albums"),
 		play: func() { a.player.play(a.artistSongs(ar.ID), 0) },
 		open: func() { a.goTo("/artist/" + ar.ID) },
+		menu: func(m *ui.Menu) { a.artistMenu(m, ar) },
 	})
 }
 

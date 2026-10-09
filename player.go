@@ -59,6 +59,9 @@ type player struct {
 	// changes, for a fade that is going to know it was cancelled.
 	sleep    sleepTimer
 	sleepGen atomic.Int64
+	// similarFor is the song that songs like it were asked for, once, as
+	// it played last.
+	similarFor string
 }
 
 func newPlayer(app *App) *player {
@@ -267,6 +270,7 @@ func (p *player) followingIndex() int {
 // armNext tells the engine what to play where the song ends, which makes
 // it download ahead and play on without a gap.
 func (p *player) armNext() {
+	p.similarCheck()
 	if p.engine == nil {
 		return
 	}
