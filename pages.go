@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	mrand "math/rand/v2"
 	"slices"
 	"strings"
 	"time"
@@ -20,6 +19,7 @@ type pageStates struct {
 	albums, added sorted[*library.Album]
 	artistList    sorted[*library.Artist]
 	playlists     sorted[*library.Playlist]
+	topArtists    sorted[*library.Artist]
 	songs, titles sorted[*library.Song]
 	rows          map[string]*rowList
 	lists         map[string]*ui.ListState
@@ -118,63 +118,6 @@ func (a *App) section(add func(func(c *ui.Context)), title string, right func(c 
 			}
 		})
 	})
-}
-
-// homePage shows what is new and what was played.
-func (a *App) homePage(c *ui.Context) {
-	if a.lib.IsEmpty() {
-		a.loadingOr(c, "disc-3", "No music yet", "This server's library has no albums. Add music to Jellyfin and it shows here.")
-		return
-	}
-	cols := a.columns(c)
-	rows := a.rows(c, "/home", "", func(add func(func(c *ui.Context))) {
-		add(func(c *ui.Context) { a.pageTitle(c, greeting(), "", nil) })
-		shelf := func(title string, albums []*library.Album, sub func(*library.Album) string, more string) {
-			if len(albums) == 0 {
-				return
-			}
-			var right func(c *ui.Context)
-			if more != "" && len(albums) > cols {
-				right = func(c *ui.Context) {
-					if a.textButton(c, "Show all").Clicked() {
-						a.settings.AlbumSort = more
-						a.goTo("/albums")
-					}
-				}
-			}
-			a.section(add, title, right)
-			shown := albums[:min(len(albums), cols)]
-			tileRows(add, len(shown), cols, func(c *ui.Context, i int) {
-				s := ""
-				if sub != nil {
-					s = sub(shown[i])
-				}
-				a.albumTile(c, shown[i], s)
-			})
-		}
-		played, most := a.playedAlbums()
-		shelf("Recently played", played, nil, "")
-		added := slices.Clone(a.albumsBy("Recently Added"))
-		shelf("Recently added", added, nil, "Recently Added")
-		shelf("Most played", most, nil, "")
-		var favorites []*library.Album
-		for i := range a.lib.Albums {
-			if a.lib.Albums[i].Favorite {
-				favorites = append(favorites, &a.lib.Albums[i])
-			}
-		}
-		shelf("Favorite albums", favorites, nil, "")
-		// A different handful each time the library is read.
-		if n := len(a.lib.Albums); n > cols {
-			rng := mrand.New(mrand.NewPCG(uint64(a.libGen), uint64(n)))
-			var picks []*library.Album
-			for _, i := range rng.Perm(n)[:cols] {
-				picks = append(picks, &a.lib.Albums[i])
-			}
-			shelf("Rediscover", picks, nil, "")
-		}
-	})
-	a.list(c, rows)
 }
 
 func greeting() string {

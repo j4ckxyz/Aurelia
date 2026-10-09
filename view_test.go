@@ -715,3 +715,29 @@ func TestOthersPlaylists(t *testing.T) {
 	tt.Frame()
 	wantTexts(t, tt, "Road trip", "Somebody's mix", "2 playlists")
 }
+
+// Home opens with the song of the queue, to go on with, and with what
+// was played lately.
+func TestHomeContinues(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 900)
+	tt.Frame()
+	if tt.HasText("CONTINUE PLAYING") {
+		t.Error("something to continue, with an empty queue")
+	}
+	wantTexts(t, tt, "Recently added", "Your top artists", "Your playlists")
+	// A queue that came back from the last run: nothing plays yet.
+	a.player.restore(a.lib.AlbumSongs("al1"), 1, 42*time.Second)
+	tt.Frame()
+	wantTexts(t, tt, "CONTINUE PLAYING", "Perfect", "0:42", "Resume")
+	// And what plays now, with the button to pause it.
+	a.player.play(a.lib.AlbumSongs("al1"), 0)
+	tt.Frame()
+	wantTexts(t, tt, "PLAYING NOW", "Shape of You", "1 more song in the queue")
+	click(t, tt, "Pause")
+	tt.Frame()
+	if a.player.playing() {
+		t.Error("the card's button did not pause")
+	}
+	wantTexts(t, tt, "CONTINUE PLAYING", "Resume")
+}
