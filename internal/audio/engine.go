@@ -23,6 +23,9 @@ type Track struct {
 	Duration time.Duration
 	// GainDB is added while the engine normalizes volume.
 	GainDB float64
+	// NoFade keeps the track from being faded into from the one before it:
+	// for songs that follow each other on an album.
+	NoFade bool
 }
 
 // EventKind says what happened.
@@ -60,11 +63,23 @@ type State struct {
 // and a half.
 const ringFrames = 1 << 16
 
+// sink is what the engine plays on: the sound card's player, or in tests a
+// device that only collects what is played.
+type sink interface {
+	Play()
+	Pause()
+	IsPlaying() bool
+	Seek(offset int64, whence int) (int64, error)
+	SetVolume(volume float64)
+	BufferedSize() int
+	SetBufferSize(bytes int)
+}
+
 // Engine plays one track at a time and the next where it ends.
 type Engine struct {
 	rate    int
 	octx    *oto.Context
-	player  *oto.Player
+	player  sink
 	onEvent func(Event)
 	events  chan Event
 
@@ -84,6 +99,7 @@ type Engine struct {
 	nextFile  *File    // and the file of the track after
 	normalize bool
 	level     float64 // added to every track's gain while normalizing, in dB
+	xfade     int     // frames of the crossfade, 0 for none
 
 	ring   []float32
 	rhead  int // in frames
@@ -124,6 +140,60 @@ type source struct {
 	eof   bool
 	seg   *segment
 	need  int // room in the ring that one read of the decoder may take, in frames
+
+	// total and read count the decoder's frames, at its own rate, to know
+	// how much of the track is left.
+	total, read int64
+	// pend is sound decoded and not given to the ring yet: what a crossfade
+	// took from the start of the track is not, and what it did not take is.
+	pend []float32
+	// consumed is how much of the start of the track a crossfade played
+	// under the end of the track before, in frames of the device.
+	consumed int64
+	// done tells that the decoder gave its last frame.
+	done bool
+	// zoneLen and zonePos are the length of the crossfade this track ends
+	// with and how far it is, in frames of the device; 0 before it begins.
+	zoneLen, zonePos int
+}
+
+// step decodes one run of sound, with the track's gain, at the rate of the
+// device, onto out. It reports the end of the track.
+func (s *source) step(in, out []float32) ([]float32, bool, error) {
+	if s.done {
+		return out, true, nil
+	}
+	n, err := s.dec.Read(in)
+	if n > 0 {
+		s.read += int64(n)
+		buf := in[:2*n]
+		s.amplify(buf)
+		if s.rs != nil {
+			out = s.rs.process(buf, out)
+		} else {
+			out = append(out, buf...)
+		}
+	}
+	switch {
+	case err == nil:
+		return out, false, nil
+	case err == io.EOF:
+		s.done = true
+		if s.rs != nil {
+			out = s.rs.flush(out)
+		}
+		return out, true, nil
+	}
+	return out, false, err
+}
+
+// leftOut is how many frames of the device the track has still to give,
+// by the length its file says; -1 when that is not known.
+func (s *source) leftOut(rate int) int {
+	if s.total <= 0 || s.dec == nil {
+		return -1
+	}
+	return int(float64(max(s.total-s.read, 0)) * float64(rate) / float64(s.dec.SampleRate()))
 }
 
 func (s *source) close() {
@@ -142,10 +212,7 @@ func Devices() ([]Device, error) { return oto.Devices() }
 // the system's default for "". onEvent is called on a goroutine of the
 // engine's, one event at a time.
 func NewEngine(rate int, deviceID string, onEvent func(Event)) (*Engine, error) {
-	e := &Engine{rate: rate, onEvent: onEvent, events: make(chan Event, 16), volume: 1, paused: false}
-	e.cond = sync.NewCond(&e.mu)
-	e.fx.set(Effects{}, float64(rate))
-	e.ring = make([]float32, 2*ringFrames)
+	e := newEngine(rate, onEvent)
 	octx, ready, err := oto.NewContext(&oto.NewContextOptions{
 		SampleRate:      rate,
 		ChannelCount:    2,
@@ -165,11 +232,27 @@ func NewEngine(rate int, deviceID string, onEvent func(Event)) (*Engine, error) 
 		return nil, fmt.Errorf("audio: opening the sound card: %w", err)
 	}
 	e.octx = octx
-	e.player = octx.NewPlayer(deviceReader{e})
+	player := octx.NewPlayer(deviceReader{e})
 	// A short buffer on the device's side: the ring is the real one, and
 	// what the device holds is what a track change and the position lag
 	// by.
-	e.player.SetBufferSize(rate / 8 * 8)
+	player.SetBufferSize(rate / 8 * 8)
+	e.player = player
+	e.start()
+	return e, nil
+}
+
+// newEngine makes an engine that has no sound card yet.
+func newEngine(rate int, onEvent func(Event)) *Engine {
+	e := &Engine{rate: rate, onEvent: onEvent, events: make(chan Event, 16), volume: 1, paused: false}
+	e.cond = sync.NewCond(&e.mu)
+	e.fx.set(Effects{}, float64(rate))
+	e.ring = make([]float32, 2*ringFrames)
+	return e
+}
+
+// start sets the engine going, once its player is there.
+func (e *Engine) start() {
 	go e.pump()
 	go func() {
 		for ev := range e.events {
@@ -187,17 +270,19 @@ func NewEngine(rate int, deviceID string, onEvent func(Event)) (*Engine, error) 
 			}
 		}
 	}()
-	return e, nil
-}
-
-// SetDevice moves the sound to the output named, "" being the system's
-// default. A song playing goes on there, after a moment of silence.
-func (e *Engine) SetDevice(deviceID string) error {
-	return e.octx.SetDevice(deviceID)
 }
 
 // Rate returns the rate of the device.
 func (e *Engine) Rate() int { return e.rate }
+
+// SetDevice moves the sound to the output named, "" being the system's
+// default. A song playing goes on there, after a moment of silence.
+func (e *Engine) SetDevice(deviceID string) error {
+	if e.octx == nil {
+		return errors.New("audio: no sound card")
+	}
+	return e.octx.SetDevice(deviceID)
+}
 
 func (e *Engine) emit(ev Event) {
 	select {
@@ -339,6 +424,14 @@ func (e *Engine) SetVolume(v float64) {
 func (e *Engine) SetEffects(fx Effects) {
 	e.mu.Lock()
 	e.fx.set(fx, float64(e.rate))
+	e.mu.Unlock()
+}
+
+// SetCrossfade sets how long the end of a track and the start of the next
+// are heard together, 0 for none: from the track decoded next.
+func (e *Engine) SetCrossfade(d time.Duration) {
+	e.mu.Lock()
+	e.xfade = int(d.Seconds() * float64(e.rate))
 	e.mu.Unlock()
 }
 
@@ -540,7 +633,7 @@ func (e *Engine) pump() {
 				cur.close()
 				cur, nxt = nxt, nil
 				e.next, e.nextFile = nil, nil
-				cur.seg = &segment{id: cur.track.ID, dur: cur.track.Duration, file: cur.file}
+				cur.seg = &segment{id: cur.track.ID, dur: cur.track.Duration, file: cur.file, start: cur.consumed}
 				e.segs = append(e.segs, cur.seg)
 				e.pumpFile = cur.file
 				continue
@@ -557,6 +650,7 @@ func (e *Engine) pump() {
 		gen := e.gen
 		normalize := e.normalize
 		level := e.level
+		xf := e.xfade
 		e.mu.Unlock()
 
 		switch {
@@ -625,29 +719,27 @@ func (e *Engine) pump() {
 			src.close()
 
 		case decode:
-			n, err := cur.dec.Read(in)
 			out = out[:0]
-			if n > 0 {
-				buf := in[:2*n]
-				cur.amplify(buf)
-				if cur.rs != nil {
-					out = cur.rs.process(buf, out)
-				} else {
-					out = append(out, buf...)
-				}
-			}
-			eof := false
-			if err != nil {
-				if errors.Is(err, ErrAborted) {
-					continue // a new request waits
-				}
-				if err != io.EOF {
+			var eof bool
+			if len(cur.pend) > 0 {
+				// What a crossfade left of this track's start goes first, in
+				// the pieces the ring has room for: more would be lost.
+				n := min(len(cur.pend)/2, cur.need)
+				out = append(out, cur.pend[:2*n]...)
+				cur.pend = cur.pend[:copy(cur.pend, cur.pend[2*n:])]
+				eof = len(cur.pend) == 0 && cur.done
+			} else {
+				var err error
+				out, eof, err = cur.step(in, out)
+				if err != nil {
+					if errors.Is(err, ErrAborted) {
+						continue // a new request waits
+					}
 					e.fail(cur.track.ID, gen, err)
 					continue
 				}
-				eof = true
-				if cur.rs != nil {
-					out = cur.rs.flush(out)
+				if xf > 0 {
+					out = e.fadeInto(cur, nxt, in, out, xf)
 				}
 			}
 			e.mu.Lock()
@@ -661,6 +753,56 @@ func (e *Engine) pump() {
 			e.mu.Unlock()
 		}
 	}
+}
+
+// fadeInto mixes the start of the track that follows into the end of cur,
+// as the last frames of cur are given to the ring: cur goes down and the
+// next comes up, with the same power in all. It begins when what is left of
+// cur is no more than xf frames, and not at all when cur's length is not
+// known, there is no next track, or the next is not to be faded into.
+func (e *Engine) fadeInto(cur, nxt *source, in, out []float32, xf int) []float32 {
+	frames := len(out) / 2
+	if cur.zoneLen == 0 {
+		left := cur.leftOut(e.rate)
+		if left < 0 || nxt == nil || nxt.track.NoFade || left+frames > xf {
+			return out
+		}
+		cur.zoneLen = max(left+frames, 1)
+	}
+	if frames == 0 {
+		return out
+	}
+	var mine []float32
+	if nxt != nil {
+		for len(nxt.pend) < 2*frames && !nxt.done {
+			var err error
+			if nxt.pend, _, err = nxt.step(in, nxt.pend); err != nil {
+				break // it fails again, and tells, when its turn comes
+			}
+		}
+		mine = nxt.pend
+	}
+	used := 0
+	for i := 0; i < frames; i++ {
+		t := math.Min(float64(cur.zonePos+i)/float64(cur.zoneLen), 1)
+		down, up := float32(math.Cos(t*math.Pi/2)), float32(math.Sin(t*math.Pi/2))
+		l, r := out[2*i]*down, out[2*i+1]*down
+		if 2*i+1 < len(mine) {
+			l, r = l+mine[2*i]*up, r+mine[2*i+1]*up
+			used = i + 1
+		}
+		out[2*i], out[2*i+1] = clamp1(l), clamp1(r)
+	}
+	if nxt != nil {
+		nxt.pend = nxt.pend[:copy(nxt.pend, nxt.pend[2*used:])]
+		nxt.consumed += int64(used)
+	}
+	cur.zonePos += frames
+	return out
+}
+
+func clamp1(v float32) float32 {
+	return max(-1, min(1, v))
 }
 
 // push appends frames of seg to the ring, which has room for them.
@@ -720,7 +862,7 @@ func (e *Engine) newSource(t *Track, f *File, normalize bool, level float64) (*s
 		f.Close()
 		return nil, err
 	}
-	src := &source{track: t, file: f, dec: dec, gain: 1, limit: 1}
+	src := &source{track: t, file: f, dec: dec, gain: 1, limit: 1, total: dec.Len()}
 	src.rs = newResampler(dec.SampleRate(), e.rate)
 	// One read of the decoder is 4096 frames at its rate, and the
 	// resampler's tail at the end of the track.
@@ -744,6 +886,9 @@ func (e *Engine) seekSource(src *source, to time.Duration) error {
 	if src.rs != nil {
 		src.rs.reset()
 	}
+	// Where the track is now, and no crossfade begun.
+	src.read = int64(to.Seconds() * float64(src.dec.SampleRate()))
+	src.zoneLen, src.zonePos, src.pend, src.done = 0, 0, src.pend[:0], false
 	return nil
 }
 

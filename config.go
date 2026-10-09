@@ -75,6 +75,9 @@ type Settings struct {
 	LrclibURL string `json:"lrclibURL,omitempty"`
 	// Pinned are the albums, artists and playlists kept in the sidebar.
 	Pinned []Pin `json:"pinned,omitempty"`
+	// CrossfadeSecs is how long the end of a song and the start of the next
+	// are heard together; 0 for none.
+	CrossfadeSecs int `json:"crossfade,omitempty"`
 	// Autoplay goes on with songs like the last when the queue ends.
 	Autoplay bool `json:"autoplay,omitempty"`
 	// Motion is "" to follow the system's Reduce motion, "on" or "reduced".

@@ -183,6 +183,16 @@ func (a *App) settingsPage(c *ui.Context) {
 						a.saveSettings()
 					}
 				})
+				a.setting(c, "Crossfade", "The end of a song and the start of the next are heard together. Songs that follow each other on an album are not faded into, as albums are meant to be heard.", func() {
+					at := crossfadeName(a.settings.CrossfadeSecs)
+					if ui.Select(c.Key("crossfade"), &at, crossfadeNames()).Width(150).Label("Crossfade").Changed() {
+						a.settings.CrossfadeSecs = crossfadeSecs(at)
+						if e := a.player.engine; e != nil {
+							e.SetCrossfade(time.Duration(a.settings.CrossfadeSecs) * time.Second)
+						}
+						a.saveSettings()
+					}
+				})
 				a.setting(c, "Look up missing lyrics", "When the server has no lyrics for a song, ask LRCLIB, a free database of them. It is told the song's artist, title, album and length, and nothing else.", func() {
 					if ui.Switch(c.Key("lrclib"), &a.settings.Lrclib).Label("Look up missing lyrics").Changed() {
 						a.lyrics.asked = map[string]bool{} // songs without lyrics are asked of it now
@@ -594,4 +604,31 @@ func (a *App) outputHelp() string {
 		return "Not plugged in. The system's default plays until it is."
 	}
 	return "Where the sound plays, kept between runs."
+}
+
+// crossfadeChoices are the lengths offered, in seconds.
+var crossfadeChoices = []int{0, 2, 4, 6, 8, 10, 12}
+
+func crossfadeNames() []string {
+	names := make([]string, len(crossfadeChoices))
+	for i, n := range crossfadeChoices {
+		names[i] = crossfadeName(n)
+	}
+	return names
+}
+
+func crossfadeName(secs int) string {
+	if secs <= 0 {
+		return "Off"
+	}
+	return fmt.Sprintf("%d seconds", secs)
+}
+
+func crossfadeSecs(name string) int {
+	for _, n := range crossfadeChoices {
+		if crossfadeName(n) == name {
+			return n
+		}
+	}
+	return 0
 }

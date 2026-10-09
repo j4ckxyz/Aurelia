@@ -430,6 +430,30 @@ func (a *App) debug(dir, line string) {
 			}
 			os.WriteFile(filepath.Join(dir, "similar"), []byte(out), 0o644)
 		})
+	case "xfade":
+		// "xfade 4" crossfades by 4 seconds, "xfade 0" not.
+		n, _ := strconv.Atoi(arg)
+		do(func() {
+			a.settings.CrossfadeSecs = n
+			if e := a.player.engine; e != nil {
+				e.SetCrossfade(time.Duration(n) * time.Second)
+			}
+		})
+	case "radio":
+		// "radio" plays songs like the one playing.
+		do(func() {
+			if s := a.player.current(); s != nil {
+				a.startRadio("Songs", s.ID, s.Name, s)
+			}
+		})
+	case "seekend":
+		// "seekend 8s" goes to 8 seconds before the end of the song.
+		d, _ := time.ParseDuration(arg)
+		do(func() {
+			if s := a.player.current(); s != nil {
+				a.player.seek(s.Duration() - d)
+			}
+		})
 	case "front":
 		// A covered window paints no frames, so a shot would show an old
 		// one: the window is brought forward.

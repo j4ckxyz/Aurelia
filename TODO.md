@@ -67,8 +67,6 @@ little kept on disk.
         (WASAPI) is written and its listing is run in CI, but no Windows
         machine with a sound card has played through it yet.
 - [ ] *Suggested, to choose from:*
-  - [ ] Crossfade between songs, with its length, and not within an
-        album played in order.
   - [ ] Normalization by album as well as by song, so that an album
         keeps its own quiet and loud songs.
   - [ ] The output's sample rate following the song's, where the device
@@ -323,6 +321,23 @@ Each entry is written as:
       songs, albums and artists most played. Not a "year in review": the
       server counts plays in all, not by year, so it is an all-time
       account. Verified by a test of the sums and the page.
+- [x] **Crossfade between songs** (2026-10-09): Settings ▸ Playback ▸
+      Crossfade, off or 2 to 12 seconds. The end of a song and the start of
+      the next are heard together with equal power; songs that follow each
+      other on an album (or a song repeated) are not faded into; a
+      crossfade longer than a song fades over the whole of it. Verified:
+      the engine was made testable without a sound card, and tests play
+      two generated FLAC tracks (440 Hz and 880 Hz) through it: the length
+      (two tracks less the overlap), which tone is heard when, the mix in
+      the middle (each at 0.354 of its level), that one goes down and the
+      other comes up, no click and nothing over full scale, the events, the
+      same-album rule, "off" staying gapless, and a crossfade longer than
+      the song. They found a real bug (the next song's leftover frames could
+      overflow the ring and be dropped) which is fixed; 30 repeated runs
+      and the race detector are clean. In the running app, on the real
+      device and files: after the fade the next song reports a position of
+      4.6 s, as its first four seconds were already heard, and goes on from
+      there.
 - [x] **An equalizer** (2026-10-09): ten bands from 31 Hz to 16 kHz and a
       preamp, 14 presets and presets of your own (saved, named, deleted),
       one switch, kept between runs, with a curve drawn over the sliders.

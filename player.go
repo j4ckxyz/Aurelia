@@ -89,6 +89,7 @@ func newPlayer(app *App) *player {
 					app.output.on = chosen
 					engine.SetNormalize(app.settings.Normalize, app.settings.levelDB())
 					app.applyEffects()
+					engine.SetCrossfade(time.Duration(app.settings.CrossfadeSecs) * time.Second)
 					p.applyVolume()
 				}
 			})
@@ -284,6 +285,7 @@ func (p *player) armNext() {
 		return
 	}
 	p.next, p.nextIndex = p.trackOf(p.queue[i]), i
+	p.next.NoFade = followsOnAlbum(p.current(), p.queue[i])
 	p.engine.SetNext(p.next)
 }
 
@@ -731,4 +733,19 @@ func (p *player) engineRate() int {
 		return 0
 	}
 	return p.engine.Rate()
+}
+
+// followsOnAlbum reports whether next is the song after cur on their album,
+// or cur again: those are not faded into, as an album played through is
+// not, and a song repeated is not mixed into itself.
+func followsOnAlbum(cur, next *library.Song) bool {
+	switch {
+	case cur == nil || next == nil:
+		return false
+	case cur.ID == next.ID:
+		return true
+	case cur.AlbumID == "" || cur.AlbumID != next.AlbumID:
+		return false
+	}
+	return next.Disc == cur.Disc && next.Track == cur.Track+1 || next.Disc == cur.Disc+1 && next.Track == 1
 }
