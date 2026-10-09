@@ -34,6 +34,7 @@ var ownControls = runtime.GOOS == "windows"
 // frame prepares a frame: the theme, the toasts, and what follows the
 // route.
 func (a *App) frame(c *ui.Context) {
+	a.images.tick()
 	if a.editing != nil && !strings.HasPrefix(a.router.Path(), "/theme/") {
 		a.editing = nil // left without saving
 	}

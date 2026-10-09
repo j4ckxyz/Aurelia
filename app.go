@@ -101,7 +101,7 @@ func newApp(d dirs, silent bool) *App {
 	a.pages.queueChosen = -1
 	a.themes = theme.NewStore(d.themes())
 	a.lib = library.Empty()
-	a.images = newImageCache(d.images(), filepath.Join(d.downloads(), "art"), 18<<20, int64(a.settings.PictureCacheMB)<<20, a.update)
+	a.images = newImageCache(d.images(), filepath.Join(d.downloads(), "art"), 12<<20, int64(a.settings.PictureCacheMB)<<20, a.update)
 	a.player = newPlayer(a)
 	a.downloads = newDownloads(a)
 	if s := a.settings.Session; s != nil {
@@ -346,6 +346,16 @@ func (a *App) sync() {
 func (a *App) setLibrary(l *library.Library) {
 	a.lib = l
 	a.libGen++
+	// The orders the long pages show in are made now, once, so that the
+	// pages open at once: sorting ten thousand songs takes ten
+	// milliseconds, more than a frame has.
+	if slices.Contains(songSorts, a.settings.SongSort) {
+		a.songsBy(a.settings.SongSort)
+	}
+	a.songsBy(songSorts[0])
+	if slices.Contains(albumSorts, a.settings.AlbumSort) {
+		a.albumsBy(a.settings.AlbumSort)
+	}
 	a.restoreQueue()
 	// The queue's songs are those of the library before: the same songs
 	// of the new one take their place, so that a favorite set on one

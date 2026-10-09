@@ -27,8 +27,8 @@ func main() {
 	}
 	// A music player's heap is small and steady: collect it eagerly, so
 	// that the app stays near the memory it needs.
-	debug.SetGCPercent(25)
-	debug.SetMemoryLimit(64 << 20)
+	debug.SetGCPercent(15)
+	debug.SetMemoryLimit(56 << 20)
 
 	// One Aurelia at a time: opening it again shows the one running.
 	// Development runs several, each with a directory of its own.

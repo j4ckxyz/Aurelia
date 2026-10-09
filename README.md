@@ -7,9 +7,12 @@ Windows and Linux.
 
 Aurelia is written in Go with [MyGo](https://github.com/egoist/mygo)'s native
 UI: it draws its own interface on the GPU, with no webview and no Electron.
-One binary of about 13 MB, about 80 MB of memory at rest and a little over
-100 MB while it plays, and a library kept on disk so that every page and
-every search shows at once.
+One binary of about 13 MB, and a library kept on disk so that every page
+and every search shows at once. With a library of ten thousand songs in a
+1240 × 800 window on a Retina display, it takes about 85 MB of memory at
+rest, 105 to 120 MB while browsing, and about 140 MB while it plays; a
+third to a half of that is the window's own frames on the GPU, which grow
+with the window.
 
 It plays the music side of Jellyfin only: albums, artists, songs and
 playlists. It does not show movies or shows.

@@ -18,7 +18,8 @@ import (
 // leaves a frame 8 ms. The frames here are drawn on the CPU, which the
 // app leaves to the GPU, so only the first frame of a page is held to a
 // limit; "scroll albums 200" of the debug hook times the app's own
-// frames, with MYGO_FRAME_STATS=all.
+// frames, with MYGO_FRAME_STATS=all. Run it alone (go test -p 1, or
+// -run FrameTimes): other packages' tests on the same cores slow it.
 func TestFrameTimes(t *testing.T) {
 	path := os.Getenv("AURELIA_TEST_LIBRARY")
 	if path == "" {

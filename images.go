@@ -37,7 +37,12 @@ type imageCache struct {
 	// frame.
 	post func(func())
 
+	// frame counts the frames, to tell what shows now. The interface's
+	// goroutine counts; the loaders read.
+	frame atomic.Uint64
+
 	// On the interface's goroutine only.
+	settling bool // a settle is due
 	mem      map[string]*list.Element
 	lru      *list.List // of *memImage, the last shown first
 	memBytes int64
@@ -45,7 +50,12 @@ type imageCache struct {
 	failed   map[string]time.Time
 
 	// Shared with the loaders.
-	mu      sync.Mutex
+	mu sync.Mutex
+	// tokens meter the pictures decoded: a page's worth at once, then so
+	// many a second. The renderer keeps what it drew for a while after,
+	// so a fling through a whole library must not decode all it passes.
+	tokens  float64
+	refill  time.Time
 	cond    *sync.Cond
 	pending map[string]*imageReq
 	stack   []*imageReq // the last asked is loaded first
@@ -53,20 +63,27 @@ type imageCache struct {
 	started bool
 }
 
-// imageLoaders is how many pictures load at once.
-const imageLoaders = 4
+// imageLoaders is how many pictures load at once; imageBurst how many
+// may be decoded at once, as a page that opens, and imageRate how many a
+// second after that, as a scroll that goes on.
+const (
+	imageLoaders = 4
+	imageBurst   = 48
+	imageRate    = 40
+)
 
 type memImage struct {
 	key   string
 	bmp   *ui.Bitmap
 	bytes int64
+	used  uint64 // the frame that last showed it
 }
 
 type imageReq struct {
 	key, url string
-	wanted   time.Time
-	diskOnly bool // fetch to disk, decode nothing
-	pin      bool // and keep in pinDir
+	wanted   uint64 // the last frame that asked for it
+	diskOnly bool   // fetch to disk, decode nothing
+	pin      bool   // and keep in pinDir
 }
 
 func newImageCache(dir, pinDir string, maxBytes, maxDisk int64, post func(func())) *imageCache {
@@ -86,6 +103,7 @@ func newImageCache(dir, pinDir string, maxBytes, maxDisk int64, post func(func()
 		failed: map[string]time.Time{}, pending: map[string]*imageReq{},
 	}
 	ic.cond = sync.NewCond(&ic.mu)
+	ic.tokens, ic.refill = imageBurst, time.Now()
 	ic.maxDisk.Store(maxDisk)
 	go ic.trim()
 	return ic
@@ -168,7 +186,9 @@ func (ic *imageCache) trim() {
 func (ic *imageCache) get(key, url string) *ui.Bitmap {
 	if el, ok := ic.mem[key]; ok {
 		ic.lru.MoveToFront(el)
-		return el.Value.(*memImage).bmp
+		m := el.Value.(*memImage)
+		m.used = ic.frame.Load()
+		return m.bmp
 	}
 	if at, bad := ic.failed[key]; bad {
 		if time.Since(at) < 30*time.Second {
@@ -176,7 +196,7 @@ func (ic *imageCache) get(key, url string) *ui.Bitmap {
 		}
 		delete(ic.failed, key)
 	}
-	now := time.Now()
+	now := ic.frame.Load()
 	ic.mu.Lock()
 	if req := ic.pending[key]; req != nil {
 		req.wanted = now
@@ -233,15 +253,26 @@ func (ic *imageCache) loader() {
 		var req *imageReq
 		for req == nil {
 			switch {
+			case len(ic.stack) > 0 && !ic.token():
+				// Too many decoded lately: a moment, and then the
+				// picture asked for last, which may be another by then.
+				ic.mu.Unlock()
+				time.Sleep(10 * time.Millisecond)
+				ic.mu.Lock()
 			case len(ic.stack) > 0:
 				req = ic.stack[len(ic.stack)-1]
 				ic.stack = ic.stack[:len(ic.stack)-1]
 				if req.diskOnly {
 					req = nil // a stale entry of one that warm made
-				} else if time.Since(req.wanted) > 2*time.Second {
-					// Scrolled away before its turn came.
+				} else if req.wanted+2 < ic.frame.Load() {
+					// Frames went by without it: it scrolled away before
+					// its turn came. A picture decoded costs memory for a
+					// while after it shows, so one nobody will see is not
+					// worth loading. With no frames drawn, as while the
+					// window waits for pictures, nothing grows old.
 					delete(ic.pending, req.key)
 					req = nil
+					ic.tokens++ // not spent
 				}
 			case len(ic.low) > 0:
 				req = ic.low[0]
@@ -281,6 +312,19 @@ func (ic *imageCache) loader() {
 			ic.insert(req.key, bmp, size)
 		})
 	}
+}
+
+// token takes the leave to decode a picture, if there is one. The caller
+// holds mu.
+func (ic *imageCache) token() bool {
+	now := time.Now()
+	ic.tokens = min(imageBurst, ic.tokens+now.Sub(ic.refill).Seconds()*imageRate)
+	ic.refill = now
+	if ic.tokens < 1 {
+		return false
+	}
+	ic.tokens--
+	return true
 }
 
 // load reads a picture from the disk, or from the server into the disk.
@@ -348,11 +392,38 @@ func (ic *imageCache) insert(key string, bmp *ui.Bitmap, size int64) {
 	if _, ok := ic.mem[key]; ok {
 		return
 	}
-	ic.mem[key] = ic.lru.PushFront(&memImage{key: key, bmp: bmp, bytes: size})
+	ic.mem[key] = ic.lru.PushFront(&memImage{key: key, bmp: bmp, bytes: size, used: ic.frame.Load()})
 	ic.memBytes += size
+	ic.shrink(2)
+	// What a scroll left behind goes once the pictures have stopped
+	// coming, without a frame drawn for it.
+	if ic.memBytes > ic.maxBytes && !ic.settling {
+		ic.settling = true
+		time.AfterFunc(time.Second, func() {
+			ic.post(func() {
+				ic.settling = false
+				ic.shrink(0)
+			})
+		})
+	}
+}
+
+// tick tells the cache that a frame begins.
+func (ic *imageCache) tick() { ic.frame.Add(1) }
+
+// shrink drops the pictures shown longest ago beyond the cache's size,
+// but none that the last frames showed, keep frames back: a window large
+// enough to show more than the cache holds would otherwise load them
+// again and again.
+func (ic *imageCache) shrink(keep uint64) {
+	frame := ic.frame.Load()
 	for ic.memBytes > ic.maxBytes && ic.lru.Len() > 1 {
 		el := ic.lru.Back()
-		m := ic.lru.Remove(el).(*memImage)
+		m := el.Value.(*memImage)
+		if m.used+keep >= frame {
+			break
+		}
+		ic.lru.Remove(el)
 		delete(ic.mem, m.key)
 		ic.memBytes -= m.bytes
 	}

@@ -77,6 +77,7 @@ func TestImageCache(t *testing.T) {
 			}
 		}
 		ic.get("missing", srv.URL+"/missing")
+		ic.tick()
 		frame()
 		if time.Now().After(deadline) {
 			t.Fatalf("%d of %d pictures after 10 s", loaded, len(keys))
@@ -92,6 +93,22 @@ func TestImageCache(t *testing.T) {
 	if des, _ := os.ReadDir(ic.dir); len(des) != len(keys) {
 		t.Errorf("%d files on disk", len(des))
 	}
+	// Shown no more, they leave memory down to what it may hold, but
+	// never those the last frame showed.
+	ic.maxBytes = 20 * 32 * 32 * 4
+	for _, k := range keys[:30] {
+		ic.get(k, "")
+	}
+	ic.shrink(0)
+	if len(ic.mem) != 30 {
+		t.Errorf("%d pictures in memory, with thirty showing and room for twenty", len(ic.mem))
+	}
+	ic.tick()
+	ic.shrink(0)
+	if len(ic.mem) != 20 {
+		t.Errorf("%d pictures in memory a frame later, with room for twenty", len(ic.mem))
+	}
+	ic.maxBytes = 1 << 20
 	// A new cache on the same directory needs no server.
 	srv.Close()
 	ic2 := newImageCache(ic.dir, ic.pinDir, 1<<20, 1<<20, func(fn func()) {
@@ -105,11 +122,25 @@ func TestImageCache(t *testing.T) {
 			t.Fatal("a picture on disk did not load without the server")
 		}
 	}
-	// Memory holds what fits: 1 MB is 256 pictures of 32 by 32, and the
-	// disk is trimmed to its limit.
-	if ic.memBytes > 1<<20 || len(ic.mem) != len(keys) {
-		t.Errorf("%d pictures, %d bytes in memory", len(ic.mem), ic.memBytes)
+	// A picture asked for once, and not in the frames after, is not
+	// worth loading: it scrolled away.
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		time.Sleep(30 * time.Millisecond)
+		w.Write(buf.Bytes())
+	}))
+	defer srv2.Close()
+	before := requests.Load()
+	for i := 0; i < 200; i++ {
+		ic.get("gone"+itoaTest(i), srv2.URL+"/gone")
+		ic.tick()
 	}
+	time.Sleep(300 * time.Millisecond)
+	frame()
+	if n := requests.Load() - before; n > 2*imageLoaders+2 {
+		t.Errorf("%d of 200 pictures that scrolled away were fetched", n)
+	}
+	// The disk is trimmed to its limit.
 	ic.maxDisk.Store(10 * int64(buf.Len()))
 	ic.trim()
 	if des, _ := os.ReadDir(ic.dir); len(des) > 10 || len(des) < 5 {
