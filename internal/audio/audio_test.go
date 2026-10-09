@@ -342,3 +342,36 @@ func TestImportAndRemove(t *testing.T) {
 		t.Errorf("removing what is not there: %v", err)
 	}
 }
+
+// A gain that would take a track over full scale is held under it, and
+// let back once the loud moment is past; a gain under 1 only scales.
+func TestAmplifyLimits(t *testing.T) {
+	s := &source{gain: 2, limit: 1}
+	buf := make([]float32, 2*44100)
+	for i := 0; i < len(buf); i += 2 {
+		v := float32(0.1)
+		if i < 2000 {
+			v = 0.9 // a loud start: 1.8 after the gain
+		}
+		buf[i], buf[i+1] = v, -v
+	}
+	s.amplify(buf)
+	for i, v := range buf {
+		if v > 1 || v < -1 {
+			t.Fatalf("sample %d is %v, over full scale", i, v)
+		}
+	}
+	if got := buf[0]; got < 0.9 || got > limiterCeiling+0.001 {
+		t.Errorf("the loud start plays at %v, want just under full scale", got)
+	}
+	// Long after, the quiet part has its whole gain back.
+	if got := buf[len(buf)-2]; got < 0.19 || got > 0.2001 {
+		t.Errorf("the quiet end plays at %v, want 0.2", got)
+	}
+	quiet := &source{gain: 0.5, limit: 1}
+	half := []float32{0.8, -0.4}
+	quiet.amplify(half)
+	if half[0] != 0.4 || half[1] != -0.2 {
+		t.Errorf("a gain of a half gave %v", half)
+	}
+}

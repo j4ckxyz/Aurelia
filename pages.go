@@ -19,6 +19,7 @@ import (
 type pageStates struct {
 	albums, added sorted[*library.Album]
 	artistList    sorted[*library.Artist]
+	playlists     sorted[*library.Playlist]
 	songs, titles sorted[*library.Song]
 	rows          map[string]*rowList
 	lists         map[string]*ui.ListState
@@ -812,18 +813,39 @@ func plain(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// playlists returns the playlists to show: the user's own, and those
+// others made public when the settings ask for them.
+func (a *App) playlists() []*library.Playlist {
+	key := fmt.Sprint(a.libGen, a.settings.OthersPlaylists)
+	s := &a.pages.playlists
+	if s.key != key {
+		s.key, s.list = key, nil
+		for i := range a.lib.Playlists {
+			if pl := &a.lib.Playlists[i]; !pl.Others || a.settings.OthersPlaylists {
+				s.list = append(s.list, pl)
+			}
+		}
+	}
+	return s.list
+}
+
 // playlistsPage shows the user's playlists.
 func (a *App) playlistsPage(c *ui.Context) {
-	if len(a.lib.Playlists) == 0 {
-		a.loadingOr(c, "list-music", "No playlists", "Playlists made in Jellyfin show here.")
+	playlists := a.playlists()
+	if len(playlists) == 0 {
+		detail := "Playlists made in Jellyfin show here."
+		if len(a.lib.Playlists) > 0 {
+			detail = "The server has playlists that others made public: Settings can show them."
+		}
+		a.loadingOr(c, "list-music", "No playlists", detail)
 		return
 	}
 	cols := a.columns(c)
-	rows := a.rows(c, "/playlists", "", func(add func(func(c *ui.Context))) {
+	rows := a.rows(c, "/playlists", fmt.Sprint(a.settings.OthersPlaylists), func(add func(func(c *ui.Context))) {
 		add(func(c *ui.Context) {
-			a.pageTitle(c, "Playlists", count(len(a.lib.Playlists), "playlist", "playlists"), nil)
+			a.pageTitle(c, "Playlists", count(len(playlists), "playlist", "playlists"), nil)
 		})
-		tileRows(add, len(a.lib.Playlists), cols, func(c *ui.Context, i int) { a.playlistTile(c, &a.lib.Playlists[i]) })
+		tileRows(add, len(playlists), cols, func(c *ui.Context, i int) { a.playlistTile(c, playlists[i]) })
 	})
 	a.list(c, rows)
 }

@@ -688,3 +688,30 @@ func TestMarker(t *testing.T) {
 		t.Error("Escape left the marker")
 	}
 }
+
+// The playlists that others made public stay out of sight until the
+// settings ask for them.
+func TestOthersPlaylists(t *testing.T) {
+	a := testApp(t)
+	a.setLibrary(library.Build(library.Data{Version: 1, Artists: a.lib.Artists, Albums: a.lib.Albums, Songs: a.lib.Songs,
+		Playlists: append(a.lib.Playlists, library.Playlist{ID: "p2", Name: "Somebody's mix", Songs: 3, Others: true})}))
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.router.Push("/playlists")
+	tt.Frame()
+	wantTexts(t, tt, "Road trip", "1 playlist")
+	if tt.HasText("Somebody's mix") {
+		t.Error("another's playlist shows unasked")
+	}
+	a.search.query = "mix"
+	a.router.Push("/search?q=mix")
+	tt.Frame()
+	if tt.HasText("Somebody's mix") {
+		t.Error("another's playlist is found unasked")
+	}
+	a.settings.OthersPlaylists = true
+	tt.Frame()
+	wantTexts(t, tt, "Somebody's mix")
+	a.router.Push("/playlists")
+	tt.Frame()
+	wantTexts(t, tt, "Road trip", "Somebody's mix", "2 playlists")
+}

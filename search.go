@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 
 	"github.com/egoist/mygo/ui"
@@ -65,9 +66,17 @@ func (a *App) searchPage(c *ui.Context) {
 	}
 	s := &a.search
 	cols := a.columns(c)
-	if key := a.rowsKey(c) + q; s.key != key {
+	if key := a.rowsKey(c) + fmt.Sprint(a.settings.OthersPlaylists) + q; s.key != key {
 		s.key = key
-		s.results = a.lib.Search(q, library.Limits{Artists: cols, Albums: 2 * cols, Songs: 60, Playlists: cols})
+		s.results = a.lib.Search(q, library.Limits{Artists: cols, Albums: 2 * cols, Songs: 60, Playlists: 4 * cols})
+		// Not the playlists of others, unless they are asked for.
+		shown := s.results.Playlists[:0]
+		for _, pl := range s.results.Playlists {
+			if (!pl.Others || a.settings.OthersPlaylists) && len(shown) < cols {
+				shown = append(shown, pl)
+			}
+		}
+		s.results.Playlists = shown
 	}
 	res := &s.results
 	// While the library's songs are still being read, the server finds
@@ -94,7 +103,7 @@ func (a *App) searchPage(c *ui.Context) {
 		a.emptyState(c, "search", "Nothing found for “"+q+"”", "Check the spelling, or try fewer words.")
 		return
 	}
-	rows := a.rows(c, "/search", q+string(rune(len(songs))), func(add func(func(c *ui.Context))) {
+	rows := a.rows(c, "/search", fmt.Sprint(a.settings.OthersPlaylists)+q+string(rune(len(songs))), func(add func(func(c *ui.Context))) {
 		if len(res.Artists) > 0 {
 			a.section(add, "Artists", nil)
 			tileRows(add, len(res.Artists), cols, func(c *ui.Context, i int) { a.artistTile(c, res.Artists[i]) })

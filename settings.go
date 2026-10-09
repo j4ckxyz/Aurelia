@@ -120,14 +120,37 @@ func (a *App) settingsPage(c *ui.Context) {
 
 			a.settingsHead(c, "Playback")
 			a.card(c, func() {
+				normalize := func() {
+					if a.player.engine != nil {
+						a.player.engine.SetNormalize(a.settings.Normalize, a.settings.levelDB())
+					}
+					a.saveSettings()
+				}
 				a.setting(c, "Normalize volume", "Play every song about as loud, with the gain the server measured.", func() {
 					if ui.Switch(c.Key("normalize"), &a.settings.Normalize).Label("Normalize volume").Changed() {
-						if a.player.engine != nil {
-							a.player.engine.SetNormalize(a.settings.Normalize)
-						}
-						a.saveSettings()
+						normalize()
 					}
 				})
+				if a.settings.Normalize {
+					a.setting(c, "Volume level", "How loud that is. Louder suits a noisy room, and keeps the loudest moments of quiet recordings in check; Quieter leaves them all their range. It holds from the next song.", func() {
+						var names []string
+						at := "Normal"
+						for _, l := range levels {
+							names = append(names, l.name)
+							if l.id == a.settings.Level {
+								at = l.name
+							}
+						}
+						if ui.Select(c.Key("level"), &at, names).Width(170).Label("Volume level").Changed() {
+							for _, l := range levels {
+								if l.name == at {
+									a.settings.Level = l.id
+								}
+							}
+							normalize()
+						}
+					})
+				}
 				a.setting(c, "Streaming quality", "Original plays files as they are. Lower rates have the server convert to MP3, for slow or metered connections.", func() {
 					q := qualities[indexOf(qualityRates, a.settings.MaxBitrate)]
 					if ui.Select(c.Key("quality"), &q, qualities).Width(150).Changed() {
@@ -211,6 +234,11 @@ func (a *App) settingsPage(c *ui.Context) {
 				a.setting(c, "Music library", info, func() {
 					if a.pillButton(c, "refresh-cw", "Update now", false).Disabled(a.syncing).Clicked() {
 						a.sync()
+					}
+				})
+				a.setting(c, "Other people's playlists", "Show the playlists that others on the server made public, among your own.", func() {
+					if ui.Switch(c.Key("others-playlists"), &a.settings.OthersPlaylists).Label("Other people's playlists").Changed() {
+						a.saveSettings()
 					}
 				})
 			})

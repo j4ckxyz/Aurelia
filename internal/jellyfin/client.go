@@ -388,6 +388,22 @@ func (c *Client) Playlists(ctx context.Context) ([]Item, error) {
 	return res.Items, err
 }
 
+// PlaylistIsOwn reports whether a playlist is the user's own, and not one
+// that another made public: the server tells who a playlist is shared
+// with to its owner alone. known is false where it tells neither, as a
+// server older than playlists that are shared.
+func (c *Client) PlaylistIsOwn(ctx context.Context, id string) (own, known bool) {
+	err := c.do(ctx, "GET", "/Playlists/"+id+"/Users", nil, nil, nil)
+	var status *StatusError
+	switch {
+	case err == nil:
+		return true, true
+	case errors.As(err, &status) && status.Code == http.StatusForbidden:
+		return false, true
+	}
+	return false, false
+}
+
 // PlaylistItems returns the songs of a playlist, in its order.
 func (c *Client) PlaylistItems(ctx context.Context, id string) ([]Item, error) {
 	q := c.userQuery()

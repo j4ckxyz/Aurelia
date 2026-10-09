@@ -60,7 +60,7 @@ func newPlayer(app *App) *player {
 			app.update(func() {
 				p.engine, p.err = engine, err
 				if engine != nil {
-					engine.SetNormalize(app.settings.Normalize)
+					engine.SetNormalize(app.settings.Normalize, app.settings.levelDB())
 					p.applyVolume()
 				}
 			})

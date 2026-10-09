@@ -83,6 +83,7 @@ type Engine struct {
 	pumpFile  *File    // what the pump may be blocked reading
 	nextFile  *File    // and the file of the track after
 	normalize bool
+	level     float64 // added to every track's gain while normalizing, in dB
 
 	ring   []float32
 	rhead  int // in frames
@@ -116,6 +117,7 @@ type source struct {
 	dec   decoder
 	rs    *resampler
 	gain  float32
+	limit float32 // what the limiter turns the level down by now, 1 for nothing
 	eof   bool
 	seg   *segment
 	need  int // room in the ring that one read of the decoder may take, in frames
@@ -315,11 +317,56 @@ func (e *Engine) SetVolume(v float64) {
 	e.player.SetVolume(v * v * v)
 }
 
-// SetNormalize turns on the gain of tracks, from the track decoded next.
-func (e *Engine) SetNormalize(on bool) {
+// SetNormalize turns on the gain of tracks, from the track decoded next;
+// level is added to the gain of each, in dB, for every song to play
+// louder or quieter than the server's measure makes them.
+func (e *Engine) SetNormalize(on bool, level float64) {
 	e.mu.Lock()
-	e.normalize = on
+	e.normalize, e.level = on, level
 	e.mu.Unlock()
+}
+
+// limiterCeiling is the level the limiter keeps a track under when its
+// gain would take it over full scale, and limiterRelease how much of the
+// way back to no limiting each frame after goes: about a fifth of a
+// second at 44.1 kHz.
+const (
+	limiterCeiling = 0.97
+	limiterRelease = 1.0 / 8000
+)
+
+// amplify applies a track's gain to frames of two samples. A gain over
+// 1 can take peaks over full scale: those are turned down as they come
+// and let back up slowly, which the ear takes better than clipping.
+func (s *source) amplify(buf []float32) {
+	if s.gain == 1 {
+		return
+	}
+	if s.gain < 1 {
+		for i, v := range buf {
+			buf[i] = v * s.gain
+		}
+		return
+	}
+	limit := s.limit
+	for i := 0; i+1 < len(buf); i += 2 {
+		l, r := buf[i]*s.gain, buf[i+1]*s.gain
+		peak := max(abs32(l), abs32(r))
+		if want := limiterCeiling / peak; peak*limit > limiterCeiling {
+			limit = want
+		} else {
+			limit += (1 - limit) * limiterRelease
+		}
+		buf[i], buf[i+1] = l*limit, r*limit
+	}
+	s.limit = limit
+}
+
+func abs32(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // State returns what plays and where.
@@ -483,6 +530,7 @@ func (e *Engine) pump() {
 		}
 		gen := e.gen
 		normalize := e.normalize
+		level := e.level
 		e.mu.Unlock()
 
 		switch {
@@ -493,7 +541,7 @@ func (e *Engine) pump() {
 			var src *source
 			var err error
 			if load.track != nil {
-				if src, err = e.open(load.track, gen, normalize); err == nil && load.at > 0 {
+				if src, err = e.open(load.track, gen, normalize, level); err == nil && load.at > 0 {
 					if err = e.seekSource(src, load.at); err != nil {
 						src.close()
 						src = nil
@@ -535,7 +583,7 @@ func (e *Engine) pump() {
 			e.mu.Unlock()
 
 		case openNext != nil:
-			src, err := e.openNext(openNext, gen, normalize)
+			src, err := e.openNext(openNext, gen, normalize, level)
 			e.mu.Lock()
 			switch {
 			case err != nil:
@@ -555,13 +603,7 @@ func (e *Engine) pump() {
 			out = out[:0]
 			if n > 0 {
 				buf := in[:2*n]
-				if cur.gain != 1 {
-					for i, v := range buf {
-						// A gain above the recording's level must not
-						// wrap around.
-						buf[i] = max(-1, min(1, v*cur.gain))
-					}
-				}
+				cur.amplify(buf)
 				if cur.rs != nil {
 					out = cur.rs.process(buf, out)
 				} else {
@@ -613,7 +655,7 @@ func (e *Engine) push(samples []float32, seg *segment) {
 
 // open opens a track for the pump, which registers its file so that a new
 // request can interrupt its reads.
-func (e *Engine) open(t *Track, gen uint64, normalize bool) (*source, error) {
+func (e *Engine) open(t *Track, gen uint64, normalize bool, level float64) (*source, error) {
 	f, err := t.Open()
 	if err != nil {
 		return nil, err
@@ -626,11 +668,11 @@ func (e *Engine) open(t *Track, gen uint64, normalize bool) (*source, error) {
 	}
 	e.pumpFile = f
 	e.mu.Unlock()
-	return e.newSource(t, f, normalize)
+	return e.newSource(t, f, normalize, level)
 }
 
 // openNext opens the track to play after the current one.
-func (e *Engine) openNext(t *Track, gen uint64, normalize bool) (*source, error) {
+func (e *Engine) openNext(t *Track, gen uint64, normalize bool, level float64) (*source, error) {
 	f, err := t.Open()
 	if err != nil {
 		return nil, err
@@ -643,16 +685,16 @@ func (e *Engine) openNext(t *Track, gen uint64, normalize bool) (*source, error)
 	}
 	e.nextFile = f
 	e.mu.Unlock()
-	return e.newSource(t, f, normalize)
+	return e.newSource(t, f, normalize, level)
 }
 
-func (e *Engine) newSource(t *Track, f *File, normalize bool) (*source, error) {
+func (e *Engine) newSource(t *Track, f *File, normalize bool, level float64) (*source, error) {
 	dec, err := openDecoder(f, t.Duration.Seconds())
 	if err != nil {
 		f.Close()
 		return nil, err
 	}
-	src := &source{track: t, file: f, dec: dec, gain: 1}
+	src := &source{track: t, file: f, dec: dec, gain: 1, limit: 1}
 	src.rs = newResampler(dec.SampleRate(), e.rate)
 	// One read of the decoder is 4096 frames at its rate, and the
 	// resampler's tail at the end of the track.
@@ -661,8 +703,10 @@ func (e *Engine) newSource(t *Track, f *File, normalize bool) (*source, error) {
 		f.Close()
 		return nil, fmt.Errorf("audio: a sample rate of %d Hz is too low to play", dec.SampleRate())
 	}
+	// A track the server has not measured plays as it is: there is no
+	// telling how loud it is.
 	if normalize && t.GainDB != 0 {
-		src.gain = float32(math.Pow(10, t.GainDB/20))
+		src.gain = float32(math.Pow(10, (t.GainDB+level)/20))
 	}
 	return src, nil
 }

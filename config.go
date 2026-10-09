@@ -30,8 +30,11 @@ type Settings struct {
 	Volume    float64 `json:"volume"`
 	Muted     bool    `json:"muted,omitempty"`
 	Normalize bool    `json:"normalize"`
-	Shuffle   bool    `json:"shuffle,omitempty"`
-	Repeat    int     `json:"repeat,omitempty"`
+	// Level is how loud normalized songs play: "loud", "normal" or
+	// "quiet".
+	Level   string `json:"level,omitempty"`
+	Shuffle bool   `json:"shuffle,omitempty"`
+	Repeat  int    `json:"repeat,omitempty"`
 	// MaxBitrate, in kbit/s, makes the server transcode above it; 0
 	// plays files as they are.
 	MaxBitrate int `json:"maxBitrate,omitempty"`
@@ -48,6 +51,9 @@ type Settings struct {
 	SongSort   string `json:"songSort,omitempty"`
 	ArtistSort string `json:"artistSort,omitempty"`
 	QueueOpen  bool   `json:"queueOpen,omitempty"`
+	// OthersPlaylists shows the playlists other people of the server
+	// made public, among the user's own.
+	OthersPlaylists bool `json:"othersPlaylists,omitempty"`
 }
 
 // The caches are small by default: the pictures of a library, and the
@@ -148,4 +154,26 @@ type savedQueue struct {
 	Songs    []string `json:"songs"`
 	Index    int      `json:"index"`
 	Position float64  `json:"position"` // seconds
+}
+
+// levels are how loud normalized songs play, as Spotify has them: the
+// loudness each aims at, and what that adds to the gain the server
+// measured, which aims at -18 LUFS.
+var levels = []struct {
+	id, name string
+	db       float64
+}{
+	{"loud", "Louder", 7},    // -11 LUFS
+	{"normal", "Normal", 4},  // -14 LUFS
+	{"quiet", "Quieter", -1}, // -19 LUFS
+}
+
+// levelDB is what the level of the settings adds to a song's gain.
+func (s *Settings) levelDB() float64 {
+	for _, l := range levels {
+		if l.id == s.Level {
+			return l.db
+		}
+	}
+	return 4
 }

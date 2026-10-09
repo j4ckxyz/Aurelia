@@ -330,11 +330,11 @@ func (a *App) sidebar(c *ui.Context) {
 			a.navItem(c, "circle-arrow-down", "Downloads", "/downloads", "")
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(4, 10, 10).Gap(1).Children(func() {
-			if len(a.lib.Playlists) > 0 {
+			playlists := a.playlists()
+			if len(playlists) > 0 {
 				ui.Text(c, "PLAYLISTS").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(10, 10, 6)
 			}
-			for i := range a.lib.Playlists {
-				pl := &a.lib.Playlists[i]
+			for _, pl := range playlists {
 				a.navItem(c, "", pl.Name, "/playlist/"+pl.ID, "")
 			}
 		})

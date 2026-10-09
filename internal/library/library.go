@@ -89,6 +89,9 @@ type Playlist struct {
 	Name     string `json:"name"`
 	ImageTag string `json:"image,omitempty"`
 	Songs    int    `json:"songs,omitempty"`
+	// Others marks a playlist that is not the user's own: one another
+	// person of the server made public.
+	Others bool `json:"others,omitempty"`
 
 	nameKey string
 }
@@ -355,7 +358,13 @@ func Sync(ctx context.Context, c *jellyfin.Client, progress func(Progress), part
 		}()
 	}
 	run(func() (err error) { artists, err = c.AlbumArtists(ctx); return })
-	run(func() (err error) { playlists, err = c.Playlists(ctx); return })
+	var others map[string]bool
+	run(func() (err error) {
+		if playlists, err = c.Playlists(ctx); err == nil {
+			others = othersPlaylists(ctx, c, playlists)
+		}
+		return
+	})
 	for i := range albumPages {
 		run(func() (err error) {
 			albumPages[i], err = c.Albums(ctx, i*albumPage, albumPage)
@@ -376,7 +385,7 @@ func Sync(ctx context.Context, c *jellyfin.Client, progress func(Progress), part
 		d.Artists = append(d.Artists, a)
 	}
 	for _, it := range playlists {
-		d.Playlists = append(d.Playlists, Playlist{ID: it.ID, Name: it.Name, ImageTag: it.ImageTags["Primary"], Songs: it.ChildCount})
+		d.Playlists = append(d.Playlists, Playlist{ID: it.ID, Name: it.Name, ImageTag: it.ImageTags["Primary"], Songs: it.ChildCount, Others: others[it.ID]})
 	}
 	seen := map[string]bool{}
 	for _, p := range albumPages {
@@ -484,4 +493,29 @@ func SongOf(it *jellyfin.Item) Song {
 func PrepareSong(s *Song) {
 	s.nameKey, s.extraKey = Fold(s.Name), Fold(s.Artist+" "+s.Album)
 	s.SortKey, s.ArtistKey, s.AlbumKey = s.nameKey, sortKey(s.Artist), sortKey(s.Album)
+}
+
+// othersPlaylists finds the playlists that are not the user's own, a few
+// at a time. One the server tells nothing of counts as the user's.
+func othersPlaylists(ctx context.Context, c *jellyfin.Client, playlists []jellyfin.Item) map[string]bool {
+	others := map[string]bool{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+	for i := range playlists {
+		id := playlists[i].ID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if own, known := c.PlaylistIsOwn(ctx, id); known && !own {
+				mu.Lock()
+				others[id] = true
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	return others
 }
