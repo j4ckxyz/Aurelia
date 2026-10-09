@@ -53,6 +53,9 @@ type imageCache struct {
 	started bool
 }
 
+// imageLoaders is how many pictures load at once.
+const imageLoaders = 4
+
 type memImage struct {
 	key   string
 	bmp   *ui.Bitmap
@@ -69,7 +72,16 @@ type imageReq struct {
 func newImageCache(dir, pinDir string, maxBytes, maxDisk int64, post func(func())) *imageCache {
 	os.MkdirAll(dir, 0o755)
 	ic := &imageCache{
-		dir: dir, pinDir: pinDir, client: &http.Client{Timeout: 30 * time.Second}, post: post,
+		dir: dir, pinDir: pinDir, post: post,
+		// A connection for each loader stays open between pictures: the
+		// default keeps two, and the others would connect anew for
+		// every picture of a server without HTTP/2.
+		client: &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			ForceAttemptHTTP2:   true,
+			MaxIdleConnsPerHost: imageLoaders,
+			IdleConnTimeout:     90 * time.Second,
+		}},
 		mem: map[string]*list.Element{}, lru: list.New(), maxBytes: maxBytes,
 		failed: map[string]time.Time{}, pending: map[string]*imageReq{},
 	}
@@ -208,7 +220,7 @@ func (ic *imageCache) start() {
 		return
 	}
 	ic.started = true
-	for range 4 {
+	for range imageLoaders {
 		go ic.loader()
 	}
 }
@@ -245,18 +257,23 @@ func (ic *imageCache) loader() {
 		ic.mu.Unlock()
 
 		bmp, size, err := ic.load(req, diskOnly)
-		ic.mu.Lock()
-		// The view may have asked for it while it was fetched for the
-		// disk alone: it is still on the stack, and loads from the disk.
-		upgraded := diskOnly && !req.diskOnly
-		if !upgraded {
-			delete(ic.pending, req.key)
-		}
-		ic.mu.Unlock()
 		if diskOnly {
+			ic.mu.Lock()
+			// The view may have asked for it while it was fetched for
+			// the disk alone: it is on the stack then, and loads from
+			// the disk.
+			if req.diskOnly {
+				delete(ic.pending, req.key)
+			}
+			ic.mu.Unlock()
 			continue
 		}
 		ic.post(func() {
+			// It stays pending until the view can see how it ended, so
+			// that no frame in between asks for it again.
+			ic.mu.Lock()
+			delete(ic.pending, req.key)
+			ic.mu.Unlock()
 			if err != nil || bmp == nil {
 				ic.failed[req.key] = time.Now()
 				return

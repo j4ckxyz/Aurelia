@@ -34,6 +34,9 @@ func testAppWith(t *testing.T, handler http.Handler) *App {
 	a := newApp(dirs{data: dir, cache: filepath.Join(dir, "cache")}, true)
 	// What the app still writes is written before its directory goes.
 	t.Cleanup(a.queueWrites.Wait)
+	// No pictures: a test has no window to hand them to, and would ask
+	// the server for them again in every frame.
+	a.pictures = func(string) *ui.Bitmap { return nil }
 	a.settings.Session = &jellyfin.Session{Server: srv.URL, ServerID: "srv", ServerName: "Test", UserID: "u", UserName: "Ada", Token: "t", DeviceID: "d"}
 	a.settings.Theme = theme.DefaultDark
 	a.setClient(jellyfin.New(*a.settings.Session))

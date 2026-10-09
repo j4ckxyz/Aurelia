@@ -188,10 +188,11 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, in, 
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == 401 {
-		return ErrUnauthorized
-	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)) // so that the connection serves again
+		if resp.StatusCode == 401 {
+			return ErrUnauthorized
+		}
 		return fmt.Errorf("jellyfin: %s %s: the server answered %s", method, path, resp.Status)
 	}
 	if out == nil {
