@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 )
 
 // debugHook lets a script drive the app while AURELIA_DEBUG names a
@@ -122,6 +123,23 @@ func (a *App) debug(dir, line string) {
 				len(a.images.mem), a.images.memBytes, m.HeapAlloc, m.Sys)
 		})
 		os.WriteFile(filepath.Join(dir, "state"), []byte(out), 0o644)
+	case "scroll":
+		// "scroll albums 200" scrolls a long list row by row, a frame
+		// each, for MYGO_FRAME_STATS to time real frames.
+		name, count, _ := strings.Cut(arg, " ")
+		n, _ := strconv.Atoi(count)
+		state := map[string]*ui.ListState{"albums": &a.pages.albumList, "artists": &a.pages.artistsList, "songs": &a.pages.songList}[name]
+		if state == nil {
+			return
+		}
+		do(func() { a.goTo("/" + name) })
+		time.Sleep(300 * time.Millisecond)
+		log.Printf("scroll %s begins", name)
+		for i := 0; i < n; i++ {
+			do(func() { state.ScrollTo(i, ui.Start) })
+			time.Sleep(9 * time.Millisecond)
+		}
+		log.Printf("scroll %s ends", name)
 	case "heap":
 		// A profile of what the heap holds, for go tool pprof.
 		runtime.GC()

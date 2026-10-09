@@ -34,11 +34,26 @@ func (a *App) setting(c *ui.Context, label, help string, control func()) {
 	})
 }
 
-// sizes of what the caches hold, which reading the disk for every frame
-// would slow.
+// cacheSizes is what the caches hold on disk, measured on another
+// goroutine: thousands of files take a while to count.
 type cacheSizes struct {
 	at            time.Time
+	measuring     bool
 	audio, images int64
+}
+
+// measure counts the caches again, unless they were counted lately.
+func (a *App) measureCaches() {
+	if a.sizes.measuring || time.Since(a.sizes.at) < 5*time.Second {
+		return
+	}
+	a.sizes.measuring = true
+	go func() {
+		audio, images := a.player.cache.Size(), a.images.diskSize()
+		a.update(func() {
+			a.sizes = cacheSizes{at: time.Now(), audio: audio, images: images}
+		})
+	}()
 }
 
 var qualities = []string{"Original", "320 kbps", "192 kbps", "128 kbps"}
@@ -64,9 +79,7 @@ func (a *App) settingsPage(c *ui.Context) {
 	if a.themes.Changed() {
 		a.themeGen++
 	}
-	if time.Since(a.sizes.at) > 3*time.Second {
-		a.sizes = cacheSizes{at: time.Now(), audio: a.player.cache.Size(), images: a.images.diskSize()}
-	}
+	a.measureCaches()
 	ui.Scroll(c.Key("settings")).Grow(1).MinHeight(0).Padding(0, 0, 40).Children(func() {
 		a.pageTitle(c, "Settings", "", nil)
 		ui.Column(c).Padding(0, pagePad).Gap(10).MaxWidth(860).Children(func() {

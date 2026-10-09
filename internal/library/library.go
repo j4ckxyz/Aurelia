@@ -32,7 +32,9 @@ type Album struct {
 	Seconds   float64  `json:"seconds,omitempty"`
 	Genres    []string `json:"genres,omitempty"`
 
-	nameKey, extraKey, SortKey string
+	nameKey, extraKey string
+	// SortKey and ArtistKey order albums by name and by artist.
+	SortKey, ArtistKey string
 }
 
 // Artist is an artist that albums are by.
@@ -71,6 +73,9 @@ type Song struct {
 	HasLyrics  bool    `json:"lyrics,omitempty"`
 
 	nameKey, extraKey string
+	// SortKey, ArtistKey and AlbumKey order songs by title, artist and
+	// album.
+	SortKey, ArtistKey, AlbumKey string
 }
 
 // Duration is the song's length.
@@ -150,8 +155,8 @@ func Build(d Data) *Library {
 	for i := range l.Albums {
 		a := &l.Albums[i]
 		a.Artist = intern(a.Artist)
-		a.nameKey, a.extraKey = Fold(a.Name), Fold(a.Artist)
-		a.SortKey = sortKey(a.Name)
+		a.nameKey, a.extraKey = Fold(a.Name), intern(Fold(a.Artist))
+		a.SortKey, a.ArtistKey = sortKey(a.Name), intern(sortKey(a.Artist))
 		l.albums[a.ID] = a
 		for _, id := range a.ArtistIDs {
 			l.artistAlbums[id] = append(l.artistAlbums[id], a)
@@ -161,6 +166,7 @@ func Build(d Data) *Library {
 		s := &l.Songs[i]
 		s.Album, s.Artist = intern(s.Album), intern(s.Artist)
 		s.nameKey, s.extraKey = Fold(s.Name), intern(Fold(s.Artist+" "+s.Album))
+		s.SortKey, s.ArtistKey, s.AlbumKey = s.nameKey, intern(sortKey(s.Artist)), intern(sortKey(s.Album))
 		l.songs[s.ID] = s
 		if s.AlbumID != "" {
 			l.albumSongs[s.AlbumID] = append(l.albumSongs[s.AlbumID], s)
@@ -477,4 +483,5 @@ func SongOf(it *jellyfin.Item) Song {
 // library, as one a playlist or the server's search returns.
 func PrepareSong(s *Song) {
 	s.nameKey, s.extraKey = Fold(s.Name), Fold(s.Artist+" "+s.Album)
+	s.SortKey, s.ArtistKey, s.AlbumKey = s.nameKey, sortKey(s.Artist), sortKey(s.Album)
 }

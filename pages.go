@@ -21,9 +21,11 @@ type pageStates struct {
 	artistList    sorted[*library.Artist]
 	songs, titles sorted[*library.Song]
 	rows          map[string]*rowList
-	fetched       map[string][]*library.Song // songs asked of the server, by album or playlist
-	fetching      map[string]bool
-	fetchErr      map[string]string
+	// The places of the long lists, which stay as other pages show.
+	albumList, artistsList, songList ui.ListState
+	fetched                          map[string][]*library.Song // songs asked of the server, by album or playlist
+	fetching                         map[string]bool
+	fetchErr                         map[string]string
 }
 
 // sorted is a list in an order, with what it was made for.
@@ -216,7 +218,7 @@ func (a *App) albumsBy(order string) []*library.Album {
 	switch order {
 	case "Artist":
 		slices.SortStableFunc(list, func(x, y *library.Album) int {
-			return cmp.Or(cmp.Compare(strings.ToLower(x.Artist), strings.ToLower(y.Artist)), cmp.Compare(x.Year, y.Year), byName(x, y))
+			return cmp.Or(cmp.Compare(x.ArtistKey, y.ArtistKey), cmp.Compare(x.Year, y.Year), byName(x, y))
 		})
 	case "Year":
 		slices.SortStableFunc(list, func(x, y *library.Album) int {
@@ -251,7 +253,7 @@ func (a *App) albumsPage(c *ui.Context) {
 		return al.Artist
 	}
 	n := 1 + (len(albums)+cols-1)/cols
-	ui.List(c.Key("albums"), nil, n, func(i int) {
+	ui.List(c.Key("albums"), &a.pages.albumList, n, func(i int) {
 		if i == 0 {
 			a.pageTitle(c, "Albums", count(len(albums), "album", "albums"), func() {
 				if a.sortSelect(c, "album-sort", &a.settings.AlbumSort, albumSorts) {
@@ -285,7 +287,7 @@ func (a *App) artistsPage(c *ui.Context) {
 	artists := s.list
 	cols := a.columns(c)
 	n := 1 + (len(artists)+cols-1)/cols
-	ui.List(c.Key("artists"), nil, n, func(i int) {
+	ui.List(c.Key("artists"), &a.pages.artistsList, n, func(i int) {
 		if i == 0 {
 			a.pageTitle(c, "Artists", count(len(artists), "artist", "artists"), nil)
 			return
@@ -313,15 +315,14 @@ func (a *App) songsBy(order string) []*library.Song {
 	for i := range a.lib.Songs {
 		list[i] = &a.lib.Songs[i]
 	}
-	lower := strings.ToLower
-	byTitle := func(x, y *library.Song) int { return cmp.Compare(lower(x.Name), lower(y.Name)) }
+	byTitle := func(x, y *library.Song) int { return cmp.Compare(x.SortKey, y.SortKey) }
 	inAlbum := func(x, y *library.Song) int {
-		return cmp.Or(cmp.Compare(lower(x.Album), lower(y.Album)), cmp.Compare(x.Disc, y.Disc), cmp.Compare(x.Track, y.Track))
+		return cmp.Or(cmp.Compare(x.AlbumKey, y.AlbumKey), cmp.Compare(x.Disc, y.Disc), cmp.Compare(x.Track, y.Track))
 	}
 	switch order {
 	case "Artist":
 		slices.SortStableFunc(list, func(x, y *library.Song) int {
-			return cmp.Or(cmp.Compare(lower(x.Artist), lower(y.Artist)), inAlbum(x, y))
+			return cmp.Or(cmp.Compare(x.ArtistKey, y.ArtistKey), inAlbum(x, y))
 		})
 	case "Album":
 		slices.SortStableFunc(list, inAlbum)
@@ -354,7 +355,7 @@ func (a *App) songsPage(c *ui.Context) {
 		a.settings.SongSort = songSorts[0]
 	}
 	songs := a.songsBy(a.settings.SongSort)
-	ui.List(c.Key("songs"), nil, 2+len(songs), func(i int) {
+	ui.List(c.Key("songs"), &a.pages.songList, 2+len(songs), func(i int) {
 		switch i {
 		case 0:
 			a.pageTitle(c, "Songs", count(len(songs), "song", "songs"), func() {

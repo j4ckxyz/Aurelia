@@ -199,6 +199,7 @@ func (ic *imageCache) load(req *imageReq, diskOnly bool) (*ui.Bitmap, int64, err
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
+			io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)) // so that the connection serves again
 			return nil, 0, fmt.Errorf("image: the server answered %s", resp.Status)
 		}
 		if data, err = io.ReadAll(io.LimitReader(resp.Body, 16<<20)); err != nil {
