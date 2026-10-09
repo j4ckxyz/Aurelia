@@ -18,7 +18,7 @@ import (
 
 // Version is sent to the server as the client's; the app sets it to its
 // own.
-var Version = "0.1.4"
+var Version = "0.1.5"
 
 // Session is a signed-in user on a server, which the app keeps between
 // runs. It holds a token, never the password.
@@ -89,31 +89,85 @@ func Probe(ctx context.Context, base string) (*PublicInfo, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("jellyfin: %s answered %s", base, resp.Status)
+		return nil, statusError(base, "", resp)
 	}
 	var info PublicInfo
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&info); err != nil || info.ID == "" {
-		return nil, fmt.Errorf("jellyfin: %s is not a Jellyfin server", base)
+		return nil, &NotJellyfinError{Server: base, Page: isPage(resp)}
 	}
 	return &info, nil
+}
+
+// StatusError is an answer other than the one asked for: of the server,
+// or of what stands in front of it.
+type StatusError struct {
+	Server string // the address asked
+	What   string // what was asked, as "GET /Items"; empty when it was who the server is
+	Code   int
+	Status string // as "403 Forbidden"
+	// Challenge: Cloudflare, in front of the server, answered with a
+	// check that only a browser passes.
+	Challenge bool
+	// Page: the answer is a web page, which Jellyfin's are not.
+	Page bool
+	// Front is the name what answered gives itself, as "cloudflare".
+	Front string
+}
+
+func (e *StatusError) Error() string {
+	if e.What == "" {
+		return fmt.Sprintf("jellyfin: %s answered %s", e.Server, e.Status)
+	}
+	return fmt.Sprintf("jellyfin: %s: the server answered %s", e.What, e.Status)
+}
+
+// NotJellyfinError is an answer from something that is not a Jellyfin
+// server: another site, or a page a network shows in its place.
+type NotJellyfinError struct {
+	Server string
+	Page   bool // a web page
+}
+
+func (e *NotJellyfinError) Error() string {
+	return fmt.Sprintf("jellyfin: %s is not a Jellyfin server", e.Server)
+}
+
+func isPage(resp *http.Response) bool {
+	return strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html")
+}
+
+func statusError(server, what string, resp *http.Response) *StatusError {
+	return &StatusError{
+		Server: server, What: what, Code: resp.StatusCode, Status: resp.Status,
+		Challenge: strings.EqualFold(resp.Header.Get("Cf-Mitigated"), "challenge"),
+		Page:      isPage(resp),
+		Front:     strings.ToLower(resp.Header.Get("Server")),
+	}
 }
 
 // Login signs in with a name and a password, and returns the session.
 func Login(ctx context.Context, server, user, password, deviceID, deviceName string) (*Session, error) {
 	var base string
 	var info *PublicInfo
-	var err error
+	var first error
 	for _, u := range NormalizeServer(server) {
+		var err error
 		if info, err = Probe(ctx, u); err == nil {
 			base = u
 			break
 		}
+		// Of an address tried both ways, at https and then at http, the
+		// first failure is the one that tells: the second is of a way
+		// the server may never have answered.
+		if first == nil {
+			first = err
+		}
 	}
 	if base == "" {
-		if err == nil {
-			err = errors.New("jellyfin: no server address")
+		if first == nil {
+			first = errors.New("jellyfin: no server address")
 		}
-		return nil, err
+		return nil, first
 	}
 	body, _ := json.Marshal(map[string]string{"Username": user, "Pw": password})
 	req, err := http.NewRequestWithContext(ctx, "POST", base+"/Users/AuthenticateByName", bytes.NewReader(body))
@@ -131,7 +185,7 @@ func Login(ctx context.Context, server, user, password, deviceID, deviceName str
 		return nil, ErrUnauthorized
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("jellyfin: signing in: the server answered %s", resp.Status)
+		return nil, statusError(base, "signing in", resp)
 	}
 	var out struct {
 		User struct {
@@ -194,7 +248,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, in, 
 		if resp.StatusCode == 401 {
 			return ErrUnauthorized
 		}
-		return fmt.Errorf("jellyfin: %s %s: the server answered %s", method, path, resp.Status)
+		return statusError(c.Session.Server, method+" "+path, resp)
 	}
 	if out == nil {
 		io.Copy(io.Discard, resp.Body)

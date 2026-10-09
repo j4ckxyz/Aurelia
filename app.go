@@ -191,25 +191,6 @@ func unreachable(err error) bool {
 		errors.As(err, &timeout) && timeout.Timeout()
 }
 
-// friendly words an error for a person.
-func friendly(err error) string {
-	var netErr interface{ Timeout() bool }
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "proxyconnect") || strings.Contains(msg, "socks connect") || strings.Contains(msg, "Proxy Authentication Required"):
-		// The proxy itself: not there, or not letting this through.
-		if i := strings.LastIndex(msg, ": "); i >= 0 {
-			msg = msg[i+2:]
-		}
-		return "The proxy did not let the connection through (" + msg + ")."
-	case errors.Is(err, jellyfin.ErrUnauthorized):
-		return "The server refused the sign-in."
-	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
-		return "The server took too long to answer."
-	}
-	return err.Error()
-}
-
 // start loads what the last run kept and signs in.
 func (a *App) start() {
 	switch {
@@ -267,7 +248,7 @@ func (a *App) signIn() {
 				// A server that cannot be reached at all may be one this
 				// network blocks.
 				if proxy.Load() == nil && unreachable(err) {
-					f.err += " If this network blocks your server, a proxy may reach it."
+					f.err += " Where a network blocks the server, a proxy may reach it."
 					f.proxyShown = true
 				}
 				return

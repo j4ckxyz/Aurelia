@@ -60,7 +60,7 @@ func main() {
 	home, _ := os.UserConfigDir()
 	allow := flag.String("allow", "", "the hosts to connect to, separated by commas; *.example.com allows every host of a domain")
 	ports := flag.String("ports", "443", "the ports to connect to, separated by commas")
-	flag.StringVar(&c.listen, "listen", ":8443", "the address to listen on")
+	flag.StringVar(&c.listen, "listen", ":8443", "the address to listen on, or several separated by commas: the first is the one given to Aurelia, and one that cannot be listened on is left out")
 	flag.StringVar(&c.dir, "dir", filepath.Join(home, "aurelia-proxy"), "where the certificate and the password are kept")
 	flag.StringVar(&c.name, "name", "", "the address clients reach this machine at, a name or an IP address: for the certificate, and for the address given to Aurelia")
 	flag.StringVar(&c.user, "user", "aurelia", "the name clients sign in with")
@@ -107,9 +107,18 @@ func main() {
 	}
 	// Listening first, then giving up what is not needed any more: the
 	// certificate and the password are in memory.
-	ln, err := net.Listen("tcp", c.listen)
-	if err != nil {
-		log.Fatal(err)
+	var lns []net.Listener
+	for _, addr := range listenAddrs(c.listen) {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			// As a port under 1024 where the system keeps those to root.
+			log.Printf("not listening on %s: %v", addr, err)
+			continue
+		}
+		lns = append(lns, ln)
+	}
+	if len(lns) == 0 {
+		log.Fatal("nowhere to listen")
 	}
 	connect := []string{"53"} // the resolver's, when an answer is long
 	for port := range c.ports {
@@ -125,8 +134,23 @@ func main() {
 	default:
 		log.Printf("not sandboxed: %v", err)
 	}
-	log.Printf("listening on %s; allowing %s on ports %s", c.listen, strings.Join(c.allow, ", "), *ports)
-	log.Fatal(srv.ServeTLS(ln, "", ""))
+	failed := make(chan error, len(lns))
+	for _, ln := range lns {
+		log.Printf("listening on %s; allowing %s on ports %s", ln.Addr(), strings.Join(c.allow, ", "), *ports)
+		go func() { failed <- srv.ServeTLS(ln, "", "") }()
+	}
+	log.Fatal(<-failed)
+}
+
+// listenAddrs splits what -listen was given.
+func listenAddrs(s string) []string {
+	var out []string
+	for _, a := range strings.Split(s, ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // secrets returns the certificate and the password kept in dir, making
@@ -217,7 +241,10 @@ func pin(cert tls.Certificate) string {
 
 // proxyURL is the address to give Aurelia.
 func proxyURL(c config, cert tls.Certificate, password string) string {
-	_, port, _ := net.SplitHostPort(c.listen)
+	port := "8443"
+	if addrs := listenAddrs(c.listen); len(addrs) > 0 {
+		_, port, _ = net.SplitHostPort(addrs[0])
+	}
 	u := url.URL{Scheme: "https", User: url.UserPassword(c.user, password), Host: net.JoinHostPort(c.name, port), Fragment: "pin-sha256=" + pin(cert)}
 	return u.String()
 }

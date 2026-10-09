@@ -179,10 +179,29 @@ https://aurelia:password@203.0.113.7:8443#pin-sha256=...
 
 The two GitHub names let Aurelia fetch its updates through it; leave them
 out and updates wait for a network that reaches GitHub. The port must be
-open in the machine's firewall; 443, if you can give it, passes more
-networks than any other. `-help` lists the rest, and the proxy's files are
-in `~/.config/aurelia-proxy`: delete `password` and start it again for a
-new one.
+open in the machine's firewall. `-help` lists the rest, and the proxy's
+files are in `~/.config/aurelia-proxy`: delete `password` and start it
+again for a new one.
+
+A network that restricts what is reached often lets only ports 443 and 80
+through, and Aurelia then says that the proxy did not answer. `-listen`
+takes several addresses, the first being the one `url` gives: with
+`-listen :443,:8443` the proxy answers at both. Linux keeps ports under
+1024 to root; this lets any program of the machine listen from 443 up, the
+proxy among them:
+
+```
+echo 'net.ipv4.ip_unprivileged_port_start=443' | sudo tee /etc/sysctl.d/50-aurelia-proxy.conf
+sudo sysctl --system
+```
+
+### When it does not connect
+
+Aurelia says which step of the way failed, and how: the name not found, a
+port that nothing answers at, a certificate the network put in the way,
+the proxy's password refused, a page shown in the server's place,
+Cloudflare stopping the request. Settings ▸ Connection ▸ Test asks the
+server again and tells the same.
 
 ## Themes
 

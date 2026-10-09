@@ -321,7 +321,7 @@ func TestSignInThroughAProxy(t *testing.T) {
 	f.proxy = "http://127.0.0.1:9"
 	a.signIn()
 	wait(t, a, "the sign-in to fail", func() bool { return !f.busy })
-	if a.signedIn() || !strings.Contains(f.err, "The proxy did not let the connection through") {
+	if a.signedIn() || !strings.Contains(f.err, "The proxy's address, 127.0.0.1:9, refused the connection") {
 		t.Errorf("a proxy that is not there: %q", f.err)
 	}
 
@@ -366,7 +366,7 @@ func TestSignInThroughAProxy(t *testing.T) {
 	cn.proxy = ""
 	a.applyProxy()
 	wait(t, a, "the test of the connection", func() bool { return !cn.testing })
-	if cn.reached || !strings.Contains(cn.status, "Could not reach the server directly") || a.settings.Proxy != "" {
+	if cn.reached || !strings.Contains(cn.status, "does not know the name "+blocked) || a.settings.Proxy != "" {
 		t.Errorf("without the proxy: %q", cn.status)
 	}
 }

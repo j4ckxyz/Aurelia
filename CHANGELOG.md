@@ -1,5 +1,20 @@
 # Changes
 
+## 0.1.5
+
+- Errors of the network say what failed and why, in place of "The server
+  took too long to answer": the proxy or the server, its address and
+  port, and whether its name was not found, nothing answered there, the
+  connection was refused or cut, its certificate was not trusted, its
+  password was refused, or a web page or Cloudflare's check answered in
+  the server's place.
+- A connection that is not made within 8 seconds is given up, so that the
+  step that does not answer is known, and told sooner.
+- An address typed without http:// or https:// tells the failure of the
+  first way tried, not of the second.
+- aurelia-proxy listens on several addresses, as `-listen :443,:8443`,
+  for networks that let only port 443 through.
+
 ## 0.1.4
 
 - A proxy of your own: `tools/aurelia-proxy` runs on a Linux machine with

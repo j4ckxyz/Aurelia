@@ -75,6 +75,9 @@ func (t *switchTransport) renew() {
 	// The loaders of pictures, a song or two, and the library, each with
 	// a connection that stays open on servers without HTTP/2.
 	fresh.MaxIdleConnsPerHost = 8
+	// A connection that is not made soon is not going to be: giving up
+	// before the request does tells which step of the way does not answer.
+	fresh.DialContext = (&net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}).DialContext
 	if u, pin := proxy.Load(), proxyPin.Load(); u != nil && pin != nil && u.Scheme == "https" {
 		fresh.DialTLSContext = pinnedDialer(u.Host, *pin)
 	}
@@ -99,13 +102,21 @@ func init() {
 // local network, are checked as ever. The connections made through the
 // proxy are not made here: the transport makes them inside the tunnel,
 // and checks the server's certificate itself.
+// connectTimeout is how long a connection may take to be made, to the
+// proxy or to the server.
+const connectTimeout = 8 * time.Second
+
+// errPinMismatch is of a proxy whose certificate is not the one the
+// fingerprint in its address is of.
+var errPinMismatch = errors.New("the proxy's certificate is not the one its address names: someone may be in between")
+
 func pinnedDialer(proxyAddr string, pin [sha256.Size]byte) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if addr != proxyAddr {
-			d := tls.Dialer{Config: &tls.Config{NextProtos: []string{"h2", "http/1.1"}}}
+			d := tls.Dialer{NetDialer: &net.Dialer{Timeout: connectTimeout}, Config: &tls.Config{NextProtos: []string{"h2", "http/1.1"}}}
 			return d.DialContext(ctx, network, addr)
 		}
-		d := tls.Dialer{Config: &tls.Config{
+		d := tls.Dialer{NetDialer: &net.Dialer{Timeout: connectTimeout}, Config: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			// Nobody signed this certificate, so the usual check does
 			// not apply: the one below takes its place.
@@ -119,7 +130,7 @@ func pinnedDialer(proxyAddr string, pin [sha256.Size]byte) func(ctx context.Cont
 					return err
 				}
 				if sha256.Sum256(cert.RawSubjectPublicKeyInfo) != pin {
-					return errors.New("the proxy's certificate is not the one its address names: someone may be in between")
+					return errPinMismatch
 				}
 				return nil
 			},
@@ -275,7 +286,7 @@ func (a *App) testConnection() {
 		a.update(func() {
 			cn.testing = false
 			if err != nil {
-				cn.reached, cn.status = false, "Could not reach the server "+how+": "+friendly(err)
+				cn.reached, cn.status = false, friendly(err)
 				return
 			}
 			cn.reached = true

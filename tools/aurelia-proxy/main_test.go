@@ -216,3 +216,17 @@ func TestProxyClosesIdleTunnels(t *testing.T) {
 		t.Errorf("the quiet tunnel closed after %v; its idle time is 2 s", took)
 	}
 }
+
+// Of several addresses to listen on, the first is the one Aurelia is
+// given.
+func TestProxyURLNamesTheFirstAddress(t *testing.T) {
+	c := config{listen: "203.0.113.7:443, :8443", dir: t.TempDir(), name: "203.0.113.7", user: "aurelia"}
+	cert, password, err := secrets(c.dir, c.name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := proxyURL(c, cert, password)
+	if !strings.Contains(got, "@203.0.113.7:443#pin-sha256=") {
+		t.Errorf("the address given: %s", strings.Replace(got, password, "<password>", 1))
+	}
+}

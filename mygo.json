@@ -1,7 +1,7 @@
 {
   "name": "Aurelia",
   "identifier": "dev.aurelia.app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "copyright": "Copyright (c) 2026 j4ckxyz. MIT License.",
   "out": "build",
   "macos": {
