@@ -44,9 +44,10 @@ little kept on disk.
   - [ ] Lists: a song added to, taken from or dragged in the queue moves
         to its place.
   - [x] A setting to turn animations down, following the system's
-        "Reduce motion": Settings ▸ Appearance ▸ Animations. *(the read
-        of the system's setting is written for macOS, Windows and Linux;
-        tested on macOS only in that it reads "off" here)*
+        "Reduce motion": Settings ▸ Appearance ▸ Animations. *(the desktop's
+        wish is read by MyGo for macOS, Windows and GNOME; here it reads
+        "off", and the setting's own On and Reduced were tried in the
+        app)*
   - [ ] Measured: still 120 frames a second while they run, and no more
         memory at rest. *(no slow frames added; the frame rate itself not
         yet measured)*
@@ -72,8 +73,6 @@ little kept on disk.
         keeps its own quiet and loud songs.
   - [ ] The output's sample rate following the song's, where the device
         allows, in place of resampling.
-  - [ ] What is playing, told plainly: format, sample rate, bit depth,
-        and whether the server converted it.
 
 ### Ideas from other players
 
@@ -83,7 +82,6 @@ not asked for one by one: strike out what is not wanted.
 
 Playing
 
-- [ ] Sleep timer: stop after a time, or at the end of the song or album.
 - [ ] Song radio: "Start Radio" on a song, album or artist, from the
       server's instant mix.
 - [ ] Go on with similar songs when the queue ends.
@@ -95,13 +93,8 @@ Library
       Playlist" in the menus, songs dragged into another order.
 - [ ] Select several songs (shift and ⌘ click) to queue, download, like
       or add to a playlist together.
-- [ ] Genres, and browsing by year or decade.
 - [ ] An artist's most played songs and similar artists on their page.
-- [ ] A page of what was played, in order, and "most played" and "never
-      played" lists.
 - [ ] Pin albums and playlists to the sidebar.
-- [ ] Song details: file format, bit rate, size, where it is on the
-      server.
 - [ ] Lyrics fetched from LRCLIB when the server has none.
 
 Desktop
@@ -241,6 +234,34 @@ Each entry is written as:
       verified.
 ```
 
+- [x] **Sleep timer** (2026-10-09): the moon of the player's bar: stop in
+      5, 15, 30, 45 minutes, 1 or 2 hours (the sound fades out over two
+      and a half seconds, then pauses), or at the end of the song, or of
+      the album. Verified in the app with the real sound engine: a timer
+      of 5 s paused playback at 5 s; "end of the song" set 4 s before the
+      end left the song stopped where it ended, while the same run without
+      it went on to the next song; tests cover the song, the album (and
+      repeat-one not getting round it), the time left, and cancelling.
+- [x] **Song details, and how a song is played** (2026-10-09): "Song
+      Info…" in the menus of songs: artist, album, track, year, genres,
+      length, plays, dates, and the file as the server reads it (format,
+      sample rate, bit depth, channels, bit rate, size, path); for the
+      song playing, "Playing as": as the file is, or converted by the
+      server (to MP3 under the streaming limit, to FLAC for formats it
+      cannot decode here), kept as a download, and resampled for the
+      output. Verified: tests of the wording for each case and of the
+      dialog against a made-up server; read from the real server for two
+      songs ("FLAC, 44.1 kHz, 16-bit, stereo, 866 kbps", 26 MB).
+- [x] **Genres, and browsing by decade** (2026-10-09): "Browse" in the
+      sidebar: every genre of the library (as one if written in two
+      cases) and every decade as a tile, each opening its albums, with
+      Shuffle. A genre like "R&B/Soul" is found by a slug of its name.
+      Verified by tests (grouping, order, slugs, clicking through, a page
+      that is not there) and a rendering of the page.
+- [x] **What was played, in order, and what was never played** (2026-10-09):
+      Songs ▸ sort by Recently Played, Most Played and Never Played (which
+      lists only the songs not played). Verified by tests, including a
+      song moving to the head as it is played.
 - [x] **An equalizer** (2026-10-09): ten bands from 31 Hz to 16 kHz and a
       preamp, 14 presets and presets of your own (saved, named, deleted),
       one switch, kept between runs, with a curve drawn over the sliders.

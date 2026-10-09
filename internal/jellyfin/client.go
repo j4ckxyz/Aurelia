@@ -298,6 +298,37 @@ type Item struct {
 	HasLyrics            bool
 	Overview             string
 	PlaylistItemID       string `json:"PlaylistItemId"`
+	Path                 string
+	MediaSources         []MediaSource
+}
+
+// MediaSource is a file of an item, as the server reads it.
+type MediaSource struct {
+	Container    string
+	Size         int64
+	Bitrate      int // bit/s of the whole file
+	MediaStreams []MediaStream
+}
+
+// MediaStream is a stream of a file: its audio, a picture in it.
+type MediaStream struct {
+	Type          string
+	Codec         string
+	SampleRate    int
+	BitDepth      int
+	BitRate       int // bit/s
+	Channels      int
+	ChannelLayout string
+}
+
+// Audio returns the first audio stream of the file, nil when it has none.
+func (m *MediaSource) Audio() *MediaStream {
+	for i := range m.MediaStreams {
+		if m.MediaStreams[i].Type == "Audio" {
+			return &m.MediaStreams[i]
+		}
+	}
+	return nil
 }
 
 // Duration is the item's length.
@@ -433,6 +464,15 @@ func (c *Client) AlbumSongs(ctx context.Context, albumID string) ([]Item, error)
 func (c *Client) Item(ctx context.Context, id string) (*Item, error) {
 	var it Item
 	err := c.do(ctx, "GET", "/Items/"+id, c.userQuery(), nil, &it)
+	return &it, err
+}
+
+// MediaInfo returns a song with the files it is read from.
+func (c *Client) MediaInfo(ctx context.Context, id string) (*Item, error) {
+	q := c.userQuery()
+	q.Set("Fields", "MediaSources,Path,Genres")
+	var it Item
+	err := c.do(ctx, "GET", "/Items/"+id, q, nil, &it)
 	return &it, err
 }
 

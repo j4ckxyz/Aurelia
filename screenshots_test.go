@@ -113,10 +113,28 @@ func TestScreenshots(t *testing.T) {
 	p.paused = true
 	a.closeStage()
 
+	// Browsing, the equalizer and the picture to share.
+	show("aurelia-dark", "/genres")
+	shot("browse")
+	a.settings.EQ = EQSettings{On: true, Bands: [10]float64{5, 4, 3, 1, -1, -1, 1, 3, 4, 5}}
+	show("aurelia-dark", "/equalizer")
+	shot("equalizer")
+	show("aurelia-dark", "/album/al03")
+	a.shareAlbum(a.lib.Album("al03"))
+	shot("share")
+	a.closeShare()
+	tt.Frame()
+
 	// The window at its smallest.
 	tt.SetSize(windowMinW, windowMinH)
 	show("aurelia-dark", "/album/al03")
 	shot("small")
+}
+
+// demoGenres are the genres the made-up albums are given.
+var demoGenres = [][]string{
+	{"Indie Folk"}, {"Dream Pop", "Indie"}, {"Ambient"}, {"Synthwave"}, {"Jazz", "Soul"}, {"Indie"}, {"Electronic", "Ambient"},
+	{"Singer-Songwriter"}, {"Post-Rock"}, {"Soul", "R&B"}, {"Classical"}, {"Folk"},
 }
 
 // demoLibrary is a library of music that does not exist.
@@ -150,6 +168,7 @@ func demoLibrary() *library.Library {
 		d.Albums = append(d.Albums, library.Album{
 			ID: id, Name: al.name, Artist: artist.Name, ArtistIDs: []string{artist.ID}, Year: al.year, ImageTag: "t",
 			Added: now - int64(i)*86400*3, Favorite: i == 1 || i == 3 || i == 11,
+			Genres: demoGenres[(i*7+al.artist)%len(demoGenres)],
 		})
 		for tr := 0; tr < 9+i%4; tr++ {
 			title := titles[(i*5+tr*3)%len(titles)]

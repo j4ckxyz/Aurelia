@@ -95,6 +95,10 @@ type App struct {
 	sidebarDirty             bool
 	// stage is the full screen of the song playing.
 	stage stage
+	// browse is the genres and the decades of the library.
+	browse facets
+	// info is the dialog of a song's details.
+	info infoState
 	// share is the picture being made of a song or an album.
 	share shareState
 	// settingsScroll is how far the settings are scrolled.

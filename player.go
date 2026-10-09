@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"aurelia/internal/audio"
@@ -54,6 +55,10 @@ type player struct {
 	// that control this one.
 	queueTold string
 	reports   chan func(ctx context.Context, c *jellyfin.Client)
+	// sleep is the timer that stops the music, and sleepGen counts its
+	// changes, for a fade that is going to know it was cancelled.
+	sleep    sleepTimer
+	sleepGen atomic.Int64
 }
 
 func newPlayer(app *App) *player {
@@ -237,6 +242,15 @@ func (p *player) playIndex(i int) {
 // following returns the index of the song after the one playing, -1 at
 // the end of the queue.
 func (p *player) following() int {
+	i := p.followingIndex()
+	if i >= 0 && p.sleepStops(i) {
+		return -1
+	}
+	return i
+}
+
+// followingIndex is following without the sleep timer.
+func (p *player) followingIndex() int {
 	switch {
 	case len(p.queue) == 0 || p.index < 0:
 		return -1
@@ -291,6 +305,7 @@ func (p *player) onEvent(ev audio.Event) {
 		p.countPlay()
 		p.reportStopAt(p.current(), p.current().Duration())
 		p.finished = true
+		p.sleepEnded()
 	case audio.Failed:
 		cur := p.current()
 		if cur == nil || ev.TrackID != cur.ID {
@@ -704,4 +719,12 @@ func (p *player) reportStopAt(s *library.Song, at time.Duration) {
 	pb := jellyfin.Playback{SongID: s.ID, SessionID: p.session, Position: at}
 	p.session = ""
 	p.report(func(ctx context.Context, c *jellyfin.Client) { c.ReportStop(ctx, pb) })
+}
+
+// engineRate is the rate the sound card plays at, 0 without one.
+func (p *player) engineRate() int {
+	if p.engine == nil {
+		return 0
+	}
+	return p.engine.Rate()
 }

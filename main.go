@@ -68,7 +68,6 @@ func main() {
 func (a *App) open() {
 	a.systemDark = mygo.Theme.IsDark()
 	a.applyMotion()
-	a.readSystemMotion()
 	opts := mygo.WindowOptions{
 		Title:           "Aurelia",
 		Width:           1240,
@@ -145,6 +144,7 @@ func (a *App) keepHouse() {
 				a.player.reportProgress(false)
 			}
 			a.watchOutput()
+			a.player.tickSleep(time.Now())
 			// What a device playing in this computer's place does.
 			if f := a.player.far; f != nil && time.Since(f.polledAt) >= farPoll {
 				a.pollFar()

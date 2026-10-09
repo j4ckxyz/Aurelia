@@ -61,6 +61,7 @@ func (a *App) frame(c *ui.Context) {
 
 // view builds the window.
 func (a *App) view(c *ui.Context) {
+	a.followSystem(c)
 	a.frame(c)
 	if a.updates.offer {
 		// A new version, found as the app opened, before anything else.
@@ -123,6 +124,7 @@ func (a *App) view(c *ui.Context) {
 		bottom += farStripH
 	}
 	a.shareDialog(c)
+	a.infoDialog(c)
 	a.toastLayer(c, bottom)
 }
 
@@ -130,6 +132,7 @@ func (a *App) view(c *ui.Context) {
 // each opens at, and what the pages inside it begin with.
 var sections = []struct{ root, under string }{
 	{"/home", ""}, {"/albums", "/album/"}, {"/artists", "/artist/"}, {"/songs", ""},
+	{"/genres", "/genre/"}, {"/genres", "/decade/"},
 	{"/favorites", ""}, {"/playlists", "/playlist/"}, {"/downloads", ""},
 }
 
@@ -227,6 +230,15 @@ func (a *App) route(c *ui.Context, r *ui.Route) {
 	case r.Match("/songs"):
 		r.Title("Songs")
 		a.songsPage(c)
+	case r.Match("/genres"):
+		r.Title("Browse")
+		a.genresPage(c)
+	case r.Match("/genre/{slug}"):
+		r.Title("Genre")
+		a.facetPage(c, "genre", r.Param("slug"))
+	case r.Match("/decade/{year}"):
+		r.Title(r.Param("year") + "s")
+		a.facetPage(c, "decade", r.Param("year"))
 	case r.Match("/playlists"):
 		r.Title("Playlists")
 		a.playlistsPage(c)
@@ -419,6 +431,7 @@ func (a *App) sidebar(c *ui.Context) {
 			a.navItem(c, "disc-3", "Albums", "/albums", "/album/")
 			a.navItem(c, "mic-vocal", "Artists", "/artists", "/artist/")
 			a.navItem(c, "music", "Songs", "/songs", "")
+			a.navItem(c, "library", "Browse", "/genres", "/genre/")
 			a.navItem(c, "heart", "Favorites", "/favorites", "")
 			a.navItem(c, "list-music", "Playlists", "/playlists", "/playlist/")
 			a.navItem(c, "circle-arrow-down", "Downloads", "/downloads", "")
@@ -694,6 +707,9 @@ func (a *App) songMenu(m *ui.Menu, s *library.Song) {
 	m.Separator()
 	if m.Item("Share as a Picture…").Chosen() {
 		a.shareSong(s)
+	}
+	if m.Item("Song Info…").Chosen() {
+		a.openInfo(s)
 	}
 	label := "Add to Favorites"
 	if s.Favorite {

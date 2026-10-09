@@ -127,6 +127,9 @@ func (a *App) playerBar(c *ui.Context) {
 				a.settings.QueueOpen = !a.settings.QueueOpen
 				a.saveSettings()
 			}
+			if roomy || a.player.sleep.mode != "" {
+				a.sleepButton(c)
+			}
 			a.volume(c, roomy)
 		})
 	})

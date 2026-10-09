@@ -25,6 +25,7 @@ type pageStates struct {
 	lists         map[string]*ui.ListState
 	// The places of the long lists, which stay as other pages show.
 	albumList, artistsList, songList, queueList ui.ListState
+	genreList, facetList                        ui.ListState
 	queueChosen                                 int
 	fetched                                     map[string][]*library.Song // songs asked of the server, by album or playlist
 	fetching                                    map[string]bool
@@ -273,11 +274,14 @@ func (a *App) artistsPage(c *ui.Context) {
 	}).Grow(1).MinHeight(0).Padding(0, 0, 28)
 }
 
-var songSorts = []string{"Title", "Artist", "Album", "Recently Added", "Most Played"}
+var songSorts = []string{"Title", "Artist", "Album", "Recently Added", "Recently Played", "Most Played", "Never Played"}
 
 // songsBy returns the library's songs in an order.
 func (a *App) songsBy(order string) []*library.Song {
 	key := fmt.Sprint(a.libGen, order)
+	if order == "Most Played" || order == "Recently Played" || order == "Never Played" {
+		key = fmt.Sprint(a.libGen, a.favGen, order) // what is played changes as songs play
+	}
 	s := &a.pages.songs
 	if order == "Title" {
 		s = &a.pages.titles // a list of its own, which Favorites reads too
@@ -308,6 +312,14 @@ func (a *App) songsBy(order string) []*library.Song {
 		slices.SortStableFunc(list, func(x, y *library.Song) int {
 			return cmp.Or(cmp.Compare(y.Plays, x.Plays), byTitle(x, y))
 		})
+	case "Recently Played":
+		list = slices.DeleteFunc(list, func(sg *library.Song) bool { return sg.LastPlayed == 0 })
+		slices.SortStableFunc(list, func(x, y *library.Song) int {
+			return cmp.Or(cmp.Compare(y.LastPlayed, x.LastPlayed), byTitle(x, y))
+		})
+	case "Never Played":
+		list = slices.DeleteFunc(list, func(sg *library.Song) bool { return sg.Plays > 0 || sg.LastPlayed > 0 })
+		slices.SortStableFunc(list, byTitle)
 	default:
 		slices.SortStableFunc(list, byTitle)
 	}

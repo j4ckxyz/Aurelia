@@ -341,6 +341,43 @@ func (a *App) debug(dir, line string) {
 				}
 			}
 		})
+	case "sleeptimer":
+		// "sleeptimer time 6s", "sleeptimer song", "sleeptimer album" or
+		// "sleeptimer off".
+		do(func() {
+			mode, d, _ := strings.Cut(arg, " ")
+			dur, _ := time.ParseDuration(d)
+			if mode == "off" {
+				mode = ""
+			}
+			a.player.setSleep(mode, dur)
+		})
+	case "info":
+		// "info" opens the details of the song playing, and writes what the
+		// server told of its file to the file "info".
+		do(func() {
+			if s := a.player.current(); s != nil {
+				a.openInfo(s)
+			}
+		})
+		for i := 0; i < 100 && a.info.loading; i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
+		var out string
+		do(func() {
+			in := &a.info
+			switch {
+			case in.err != nil:
+				out = "error: " + in.err.Error()
+			case in.item != nil && len(in.item.MediaSources) > 0:
+				src := &in.item.MediaSources[0]
+				out = fmt.Sprintf("file: %s\nsize: %s\nkind: %s\nplaying as: %s\n", fileLine(src), bytesText(src.Size), src.Container,
+					playingAs(src, a.settings.MaxBitrate, a.player.engineRate(), false))
+			default:
+				out = "nothing"
+			}
+		})
+		os.WriteFile(filepath.Join(dir, "info"), []byte(out), 0o644)
 	case "front":
 		// A covered window paints no frames, so a shot would show an old
 		// one: the window is brought forward.

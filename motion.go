@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -67,16 +66,14 @@ func (a *App) applyMotion() {
 	}
 }
 
-// readSystemMotion asks the system whether it is asked to reduce motion,
-// once, without holding the window up.
-func (a *App) readSystemMotion() {
-	go func() {
-		reduces := systemReducesMotion()
-		a.update(func() {
-			a.systemReduces = reduces
-			a.applyMotion()
-		})
-	}()
+// followSystem takes the desktop's wish to reduce motion, which the
+// window reads (macOS's Reduce Motion, Windows's animation effects,
+// GNOME's animations), as a frame is built.
+func (a *App) followSystem(c *ui.Context) {
+	if r := c.Preferences().ReduceMotion; r != a.systemReduces {
+		a.systemReduces = r
+		a.applyMotion()
+	}
 }
 
 // motionName is the setting as it is shown.
@@ -88,6 +85,3 @@ func motionName(id string) string {
 	}
 	return motionChoices[0].name
 }
-
-// quickText trims what a command printed.
-func quickText(b []byte) string { return strings.TrimSpace(string(b)) }
