@@ -25,20 +25,23 @@ os=$(go env GOOS)
 arch=$(go env GOARCH)
 work=$(mktemp -d)
 out=build-update-test
+# In the project, so that its path reads the same to every program on
+# Windows.
+notes=build-update-test-changes.md
 server=""
 
 cp mygo.json "$work/mygo.json"
 cleanup() {
   cp "$work/mygo.json" mygo.json
   [ -n "$server" ] && kill "$server" 2>/dev/null || true
-  rm -rf "$out"
+  rm -rf "$out" "$notes"
 }
 trap cleanup EXIT
 
 go tool mygo keygen -o "$work/keys" > /dev/null
 MYGO_UPDATER_PRIVATE_KEY=$(cat "$work/keys/mygo-update.key")
 export MYGO_UPDATER_PRIVATE_KEY
-printf '# Changes\n\n## 0.0.2\n\nThe update of the test.\n\n## 0.0.1\n\nThe first version of the test.\n' > "$work/CHANGELOG.md"
+printf '# Changes\n\n## 0.0.2\n\nThe update of the test.\n\n## 0.0.1\n\nThe first version of the test.\n' > "$notes"
 
 # A name of its own, so that the test's app is apart from an installed
 # Aurelia.
@@ -53,7 +56,7 @@ build() {
   "updates": {
     "publicKey": "$(cat "$work/keys/mygo-update.pub")",
     "url": "https://127.0.0.1:$port",
-    "changelog": "$work/CHANGELOG.md"
+    "changelog": "$notes"
   }
 }
 JSON
@@ -126,13 +129,22 @@ for path in glob.glob(sys.argv[1] + "/update-*.json"):
 PY
 "$python" -m http.server "$port" --bind 127.0.0.1 --directory "$dir" > "$work/server.log" 2>&1 &
 server=$!
-sleep 1
-ls -la "$dir"
+feed="http://127.0.0.1:$port/update-$os-$arch.json"
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  curl -fsS -m 5 "$feed" > /dev/null 2>&1 && break
+  sleep 1
+done
+curl -fsS -m 5 "$feed" || { echo "the update is not served at $feed"; cat "$work/server.log"; exit 1; }
+echo
 
 echo "== Updating"
-"$app" --self-update "$work/update.txt"
+"$app" --self-update "$work/update.txt" || true
 cat "$work/update.txt"
-grep -q "^updated: 0.0.1 -> 0.0.2" "$work/update.txt"
+if ! grep -q "^updated: 0.0.1 -> 0.0.2" "$work/update.txt"; then
+  echo "-- what the server saw:"
+  cat "$work/server.log"
+  exit 1
+fi
 
 # The file at the same place is now the new version.
 "$app" --write-version "$work/after.txt"

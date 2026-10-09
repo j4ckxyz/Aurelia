@@ -3,14 +3,70 @@
 A fast, native music player for [Jellyfin](https://jellyfin.org), for macOS,
 Windows and Linux.
 
+![Aurelia's home page](docs/home.png)
+
 Aurelia is written in Go with [MyGo](https://github.com/egoist/mygo)'s native
 UI: it draws its own interface on the GPU, with no webview and no Electron.
 One binary of about 13 MB, about 80 MB of memory at rest and a little over
-100 MB while it plays, and a
-library kept on disk so that every page and every search shows at once.
+100 MB while it plays, and a library kept on disk so that every page and
+every search shows at once.
 
 It plays the music side of Jellyfin only: albums, artists, songs and
 playlists. It does not show movies or shows.
+
+| | |
+|---|---|
+| ![An album](docs/album.png) | ![Lyrics and the queue](docs/lyrics.png) |
+| ![Albums, in the light theme](docs/albums-light.png) | ![An artist, in Tokyo Night](docs/artist-tokyo-night.png) |
+| ![Search, in Catppuccin Mocha](docs/search-catppuccin.png) | ![The themes](docs/themes.png) |
+
+The screenshots show a library made up for them, with pictures drawn by
+`screenshots_test.go`: `AURELIA_SCREENSHOTS=docs go test -run Screenshots .`
+draws them again.
+
+## Install
+
+**macOS and Linux**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/j4ckxyz/Aurelia/main/install.sh | sh
+```
+
+**Windows**, in PowerShell
+
+```powershell
+irm https://raw.githubusercontent.com/j4ckxyz/Aurelia/main/install.ps1 | iex
+```
+
+Either installs the latest release for you alone, without administrator
+rights: in `/Applications` on macOS, `~/.local` on Linux, and
+`%LOCALAPPDATA%\Programs` on Windows. Running it again updates; `sh
+install.sh --uninstall` removes the app on macOS and Linux, and Windows
+lists it in "Installed apps".
+
+Installing this way also spares you the warnings that macOS and Windows show
+for apps whose developer has not paid for a certificate: those are shown for
+files a browser downloaded, which it marks, and the scripts mark nothing.
+The builds are signed ad hoc, not by Apple or Microsoft.
+
+The [releases](../../releases) hold the same builds to download by hand: a
+disk image for macOS (both kinds of Mac), an installer and a portable
+`.exe` for Windows, and a `.deb` and a `.tar.gz` for Linux. A disk image
+from a browser needs a right-click and Open the first time, or
+`xattr -dr com.apple.quarantine /Applications/Aurelia.app`; on Windows,
+"More info ▸ Run anyway".
+
+Linux needs GTK 3, which desktops have, and PulseAudio, PipeWire's
+PulseAudio service, or ALSA for sound.
+
+### Updates
+
+Aurelia updates itself from the releases here. A little after it opens,
+and a few times a day, it looks for a newer version, downloads it, checks
+that it was signed with Aurelia's key, puts it in place of the app, and
+offers to restart; the version running plays on until you do. Settings ▸
+Updates turns that off, and has a button to check now. A copy installed
+from the `.deb` is updated by installing a newer `.deb` instead.
 
 ## What it does
 
@@ -21,16 +77,27 @@ playlists. It does not show movies or shows.
   new and what you played, and a search of all of them as you type.
 - **Playback** of FLAC and MP3 decoded in Go, with the server transcoding
   everything else. Gapless from one song to the next, seeking that does not
-  wait for the whole file, a queue you can add to and take from,
-  shuffle, repeat, volume normalization and a quality limit for slow
-  connections. Plays are reported to the server.
+  wait for the whole file, a queue you can add to, take from and drag into
+  another order, shuffle, repeat, volume normalization and a quality limit
+  for slow connections. Plays are reported to the server.
 - **Lyrics**, with the line being sung lit when the lyrics are timed.
 - **Back and forward** through the pages you visited, at the top left, as
   in a browser: buttons, a right click for the history, ⌘[ and ⌘] (Alt+←
   and Alt+→ on Windows and Linux) and a mouse's side buttons.
-- **Caches.** Pictures and songs are kept on disk; a picture not fetched
-  yet shows as an icon until it is. The pictures of the whole library are
-  fetched ahead, quietly, so that scrolling never waits for the network.
+- **Downloads for offline.** Download a song, an album or a playlist from
+  its page or its menu, and it plays without the server. The Downloads page
+  lists what is kept and the room it takes; downloads stay until you remove
+  them. When the server does not answer, Aurelia says so and plays what is
+  downloaded.
+- **Small caches.** What is kept without asking is light: the library's
+  index (a megabyte or two), pictures within 150 MB, and the songs played
+  lately within 300 MB, so that they start at once and replay without the
+  network. Both limits are in Settings ▸ Storage, the oldest make room, and
+  a picture not fetched yet shows as an icon until it is.
+- **The queue comes back.** Aurelia opens with the song it had, paused
+  where it was.
+- **macOS knows what plays**: Control Center shows the song, and the
+  keyboard's and headphones' play, next and previous keys work.
 - **Themes.** Fourteen built in, a theme editor that shows changes as you
   make them, and themes as JSON files you can write by hand. Themes made
   for Visual Studio Code, Firefox and Chrome import as they are.
@@ -106,21 +173,6 @@ Colors are `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()` or `hsl()`.
 A double click on a song plays it; a right click on a song, an album or a
 theme opens its menu.
 
-## Download
-
-Builds for every platform are attached to the
-[releases](../../releases): a disk image for macOS, an installer and a
-portable `.exe` for Windows, and a `.deb`, a `.tar.gz` and an install
-script for Linux.
-
-The builds are not signed with a developer certificate yet. macOS asks you
-to confirm the first time: right-click the app and choose Open, or run
-`xattr -dr com.apple.quarantine /Applications/Aurelia.app`. Windows
-SmartScreen shows "More info ▸ Run anyway".
-
-Linux needs GTK 3, which desktops have, and PulseAudio, PipeWire's
-PulseAudio service, or ALSA for sound.
-
 ## Build it yourself
 
 Aurelia needs [Go](https://go.dev/dl/) 1.27 or later, and nothing else: no
@@ -144,7 +196,20 @@ directory for the app's data, apart from the installed app's.
 ```sh
 go test ./...                      # the packages, and the view without a window
 go run ./tools/mkicon              # redraw resources/icon.png
+tools/update-test.sh               # install an old version, and watch it update itself
 ```
+
+### Releasing
+
+A new `version` in `mygo.json`, with its changes under a heading of its
+number in `CHANGELOG.md`, pushed to `main`, is released by
+`.github/workflows/release.yml`: the apps of every platform, their
+installers, and the updates that installed copies fetch, signed with the
+key in the repository's `MYGO_UPDATER_PRIVATE_KEY` secret. Installed apps
+take only updates signed with that key: keep a copy of it somewhere safe.
+The releases, the install commands and the updates need the repository to
+be public: nothing can fetch a private repository's releases without
+signing in.
 
 Some tests need more than the code: `JELLYFIN_URL` and the rest make the
 library's tests read a real server, `AURELIA_TEST_FLAC=song.flac` gives the
@@ -157,6 +222,9 @@ audio tests a file, and `AURELIA_TEST_DEVICE=1` plays it on the sound card.
 | `main.go`, `app.go` | the app, its window and menus; signing in and reading the library |
 | `view.go`, `pages.go`, `widgets.go`, `playerbar.go`, `search.go`, `settings.go`, `themeeditor.go`, `login.go` | the interface |
 | `player.go` | the queue: order, shuffle, repeat, and what the server is told |
+| `downloads.go` | what is kept for offline |
+| `update.go` | the app's own updates |
+| `nowplaying_darwin.go` | what plays, told to macOS |
 | `images.go` | pictures: in memory, on disk, and from the server |
 | `internal/jellyfin` | the server's API |
 | `internal/library` | the library in memory and on disk, and its search |
@@ -165,8 +233,9 @@ audio tests a file, and `AURELIA_TEST_DEVICE=1` plays it on the sound card.
 
 Where things are kept: settings, themes and the library's index in the
 app's data directory (`~/Library/Application Support/Aurelia`,
-`%AppData%\Aurelia`, `~/.config/Aurelia`), pictures and songs in its cache
-directory. The settings hold the server's token, never the password.
+`%AppData%\Aurelia`, `~/.config/Aurelia`), with the downloads; the caches
+of pictures and of songs played lately in its cache directory. The
+settings hold the server's token, never the password.
 
 ## Credits
 

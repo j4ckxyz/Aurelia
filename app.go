@@ -44,7 +44,10 @@ type App struct {
 	// editing is the theme being edited, which shows as it changes.
 	editing *themeEditor
 
-	images    *imageCache
+	images *imageCache
+	// pictures, when set, draws the pictures in place of the server's,
+	// as the screenshots of the README do.
+	pictures  func(id string) *ui.Bitmap
 	player    *player
 	downloads *downloads
 	// offline is set while the server does not answer.

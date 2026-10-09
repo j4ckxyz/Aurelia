@@ -243,6 +243,9 @@ func imageKey(id, tag string, px int) string {
 // picture returns the picture of an item, or nil while it loads or when
 // it has none.
 func (a *App) picture(id, tag string, dip float32) *ui.Bitmap {
+	if a.pictures != nil {
+		return a.pictures(id)
+	}
 	if id == "" || tag == "" || a.client == nil {
 		return nil
 	}

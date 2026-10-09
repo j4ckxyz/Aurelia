@@ -32,6 +32,8 @@ func testAppWith(t *testing.T, handler http.Handler) *App {
 	t.Cleanup(srv.Close)
 	dir := t.TempDir()
 	a := newApp(dirs{data: dir, cache: filepath.Join(dir, "cache")}, true)
+	// What the app still writes is written before its directory goes.
+	t.Cleanup(a.queueWrites.Wait)
 	a.settings.Session = &jellyfin.Session{Server: srv.URL, ServerID: "srv", ServerName: "Test", UserID: "u", UserName: "Ada", Token: "t", DeviceID: "d"}
 	a.settings.Theme = theme.DefaultDark
 	a.setClient(jellyfin.New(*a.settings.Session))
