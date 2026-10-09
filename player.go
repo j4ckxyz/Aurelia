@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	mrand "math/rand/v2"
 	"net/http"
 	"slices"
@@ -129,6 +130,12 @@ func (p *player) trackOf(s *library.Song) *audio.Track {
 	return &audio.Track{
 		ID: id, Duration: s.Duration(), GainDB: s.GainDB,
 		Open: func() (*audio.File, error) {
+			// A song downloaded for offline plays from its file.
+			if d := app.downloads; d != nil && d.store != nil && d.store.Has(id) {
+				return d.store.Open(id, func(context.Context) (*http.Request, error) {
+					return nil, errors.New("the download was removed")
+				})
+			}
 			return p.cache.Open(id+"-"+quality.Key(), func(ctx context.Context) (*http.Request, error) {
 				c := app.clientNow()
 				if c == nil {

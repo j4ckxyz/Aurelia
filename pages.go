@@ -440,7 +440,11 @@ type hero struct {
 	play, shuffle  func()
 	favorite       *bool
 	favoriteID     string
-	menu           func(m *ui.Menu)
+	// download tells how far the download of the page's songs is, and
+	// setDownload asks for it or removes it.
+	download    func() (state int, part float64)
+	setDownload func(on bool)
+	menu        func(m *ui.Menu)
 }
 
 func (a *App) hero(c *ui.Context, h hero) {
@@ -478,12 +482,52 @@ func (a *App) hero(c *ui.Context, h hero) {
 						a.setFavorite(h.favoriteID, h.favorite, !*h.favorite)
 					}
 				}
+				if h.download != nil {
+					a.downloadButton(c, h)
+				}
 				if h.menu != nil {
 					a.iconButton(c, "ellipsis", "More", 36, 18).Menu(h.menu)
 				}
 			})
 		})
 	})
+}
+
+// downloadButton downloads the songs of a page for offline, shows how
+// far that is, and removes them.
+func (a *App) downloadButton(c *ui.Context, h hero) {
+	p := a.pal
+	state, part := h.download()
+	label := "Download"
+	switch state {
+	case dlQueued, dlActive:
+		label = "Downloading: click to stop"
+	case dlDone:
+		label = "Downloaded: click to remove"
+	}
+	b := ui.ButtonBase(c.Key("download")).Size(36, 36).Radius(18).Shrink(0).Label(label).Tooltip(label).Cursor(ui.CursorPointer)
+	if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Children(func() {
+		switch state {
+		case dlNone:
+			fg := p.muted
+			if b.Hovered() {
+				fg = p.text
+			}
+			ui.Icon(c, icon("arrow-down-to-line")).Size(18, 18).TextColor(fg)
+		case dlDone:
+			ui.Icon(c, icon("circle-check")).Size(19, 19).TextColor(p.accent)
+		default:
+			ui.Box(c).Size(19, 19).Draw(func(g *ui.Painter, r ui.Rect) {
+				ring(g, r, part, p.text.Alpha(0.2), p.accent)
+			})
+		}
+	})
+	if b.Clicked() {
+		h.setDownload(state == dlNone)
+	}
 }
 
 // metaText is a part of the line under a hero's title.
@@ -546,6 +590,14 @@ func (a *App) albumPage(c *ui.Context, r *ui.Route) {
 				play:     func() { a.player.play(songs, 0) },
 				shuffle:  func() { a.player.playShuffled(songs) },
 				favorite: &al.Favorite, favoriteID: al.ID,
+				download: func() (int, float64) { return a.downloads.group(songs) },
+				setDownload: func(on bool) {
+					if on {
+						a.downloads.addAlbum(al, songs)
+					} else {
+						a.downloads.removeAlbum(al)
+					}
+				},
 				menu: func(m *ui.Menu) { a.albumMenu(m, al) },
 			})
 		})
@@ -565,13 +617,6 @@ func (a *App) albumPage(c *ui.Context, r *ui.Route) {
 		for _, s := range songs {
 			discs = max(discs, s.Disc)
 		}
-		// An album all by one artist names the artist once, above.
-		sameArtist := true
-		for _, s := range songs {
-			if s.Artist != al.Artist {
-				sameArtist = false
-			}
-		}
 		lastDisc := -1
 		for i, s := range songs {
 			if discs > 1 && s.Disc != lastDisc {
@@ -588,7 +633,9 @@ func (a *App) albumPage(c *ui.Context, r *ui.Route) {
 				number = i + 1
 			}
 			add(func(c *ui.Context) {
-				a.songRow(c.Key(s.ID), songRow{song: s, number: number, hideArtist: sameArtist, play: func() { a.player.play(songs, i) }})
+				// The album's artist is named once, above: a song names
+				// its own only when they differ.
+				a.songRow(c.Key(s.ID), songRow{song: s, number: number, hideArtist: s.Artist == al.Artist, play: func() { a.player.play(songs, i) }})
 			})
 		}
 		// More by the artist.
@@ -779,6 +826,15 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 		return songs, nil
 	}, nil)
 	fetched, done := a.pages.fetched[key]
+	if saved := a.downloads.playlists[id]; saved != nil && !done && (a.offline || a.pages.fetchErr[key] != "") {
+		// The server is away: the playlist as it was downloaded.
+		for _, sid := range saved.Songs {
+			if s := a.downloads.songs[sid]; s != nil {
+				fetched = append(fetched, s)
+			}
+		}
+		done = true
+	}
 	// The library's own songs, where it has them: a favorite set here
 	// shows everywhere.
 	songs := make([]*library.Song, len(fetched))
@@ -807,11 +863,19 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 			if len(songs) > 0 {
 				h.play = func() { a.player.play(songs, 0) }
 				h.shuffle = func() { a.player.playShuffled(songs) }
+				h.download = func() (int, float64) { return a.downloads.group(songs) }
+				h.setDownload = func(on bool) {
+					if on {
+						a.downloads.addPlaylist(pl, songs)
+					} else {
+						a.downloads.removePlaylist(pl.ID)
+					}
+				}
 			}
 			a.hero(c, h)
 		})
 		switch {
-		case a.pages.fetchErr[key] != "":
+		case a.pages.fetchErr[key] != "" && !done:
 			add(func(c *ui.Context) {
 				a.emptyState(c, "circle-alert", "Could not read this playlist", a.pages.fetchErr[key])
 			})
@@ -889,5 +953,75 @@ func (a *App) favoritesPage(c *ui.Context) {
 		a.loadingOr(c, "heart", "No favorites yet", "The heart on a song, an album or an artist keeps it here.")
 		return
 	}
+	a.list(c, rows)
+}
+
+// downloadsPage shows what is kept on this computer: albums, playlists
+// and songs, with the room they take.
+func (a *App) downloadsPage(c *ui.Context) {
+	d := a.downloads
+	if len(d.songs) == 0 {
+		a.emptyState(c, "circle-arrow-down", "Nothing downloaded", "Download an album, a playlist or a song from its page or its menu, and it plays here without the server.")
+		return
+	}
+	size := d.size()
+	waiting := len(d.order) + len(d.active)
+	rows := a.rows(c, "/downloads", fmt.Sprint(len(d.songs), len(d.done), waiting, len(d.failed), size, a.offline), func(add func(func(c *ui.Context))) {
+		songs := d.list()
+		var here []*library.Song
+		for _, s := range songs {
+			if d.done[s.ID] {
+				here = append(here, s)
+			}
+		}
+		sub := count(len(d.done), "song", "songs") + ", " + bytesText(size)
+		switch {
+		case waiting > 0:
+			sub += " · " + count(waiting, "song", "songs") + " to go"
+		case len(d.failed) > 0:
+			sub += " · " + count(len(d.failed), "song", "songs") + " could not be downloaded"
+		}
+		add(func(c *ui.Context) {
+			a.pageTitle(c, "Downloads", sub, func() {
+				if len(d.failed) > 0 && a.pillButton(c, "refresh-cw", "Try again", false).Clicked() {
+					d.retry()
+				}
+				if len(here) > 0 && a.pillButton(c, "shuffle", "Shuffle", false).Clicked() {
+					a.player.playShuffled(here)
+				}
+				if a.pillButton(c, "trash", "Remove all", false).Clicked() {
+					d.removeAll()
+				}
+			})
+		})
+		cols := a.columns(c)
+		var albums []*library.Album
+		for i := range a.lib.Albums {
+			if d.albums[a.lib.Albums[i].ID] {
+				albums = append(albums, &a.lib.Albums[i])
+			}
+		}
+		if len(albums) > 0 {
+			a.section(add, "Albums", nil)
+			tileRows(add, len(albums), cols, func(c *ui.Context, i int) { a.albumTile(c, albums[i], "") })
+		}
+		var playlists []*library.Playlist
+		for i := range a.lib.Playlists {
+			if d.playlists[a.lib.Playlists[i].ID] != nil {
+				playlists = append(playlists, &a.lib.Playlists[i])
+			}
+		}
+		if len(playlists) > 0 {
+			a.section(add, "Playlists", nil)
+			tileRows(add, len(playlists), cols, func(c *ui.Context, i int) { a.playlistTile(c, playlists[i]) })
+		}
+		a.section(add, "Songs", nil)
+		add(func(c *ui.Context) { a.listHeader(c, "", true) })
+		for i, s := range songs {
+			add(func(c *ui.Context) {
+				a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }})
+			})
+		}
+	})
 	a.list(c, rows)
 }

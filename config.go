@@ -35,16 +35,27 @@ type Settings struct {
 	// MaxBitrate, in kbit/s, makes the server transcode above it; 0
 	// plays files as they are.
 	MaxBitrate int `json:"maxBitrate,omitempty"`
-	// AudioCacheMB is the room songs may take on disk.
-	AudioCacheMB int    `json:"audioCacheMB"`
-	AlbumSort    string `json:"albumSort,omitempty"`
-	SongSort     string `json:"songSort,omitempty"`
-	ArtistSort   string `json:"artistSort,omitempty"`
-	QueueOpen    bool   `json:"queueOpen,omitempty"`
+	// AudioCacheMB is the room the songs played lately may take on disk,
+	// and PictureCacheMB the pictures.
+	AudioCacheMB   int `json:"audioCacheMB"`
+	PictureCacheMB int `json:"pictureCacheMB"`
+	// AutoUpdate installs new versions as they are released.
+	AutoUpdate bool   `json:"autoUpdate"`
+	AlbumSort  string `json:"albumSort,omitempty"`
+	SongSort   string `json:"songSort,omitempty"`
+	ArtistSort string `json:"artistSort,omitempty"`
+	QueueOpen  bool   `json:"queueOpen,omitempty"`
 }
 
+// The caches are small by default: the pictures of a library, and the
+// songs of an evening. What is to stay is downloaded instead.
+const (
+	defaultAudioCacheMB   = 300
+	defaultPictureCacheMB = 150
+)
+
 func defaultSettings() Settings {
-	return Settings{Theme: "auto", Volume: 0.8, AudioCacheMB: 2048, AlbumSort: "name", SongSort: "title"}
+	return Settings{Theme: "auto", Volume: 0.8, AudioCacheMB: defaultAudioCacheMB, PictureCacheMB: defaultPictureCacheMB, AutoUpdate: true}
 }
 
 // dirs are where the app keeps things.
@@ -77,6 +88,11 @@ func (d dirs) themes() string       { return filepath.Join(d.data, "themes") }
 func (d dirs) images() string       { return filepath.Join(d.cache, "images") }
 func (d dirs) audio() string        { return filepath.Join(d.cache, "audio") }
 
+// downloads is where the songs downloaded for offline are, with their
+// pictures: with the app's data, which the system does not clear as it
+// may a cache.
+func (d dirs) downloads() string { return filepath.Join(d.data, "downloads") }
+
 // libraryFile is where the library of a user of a server is kept.
 func (d dirs) libraryFile(s *jellyfin.Session) string {
 	return filepath.Join(d.data, "library-"+s.ServerID+"-"+s.UserID+".json.gz")
@@ -96,7 +112,10 @@ func loadSettings(d dirs) Settings {
 		s.Theme = "auto"
 	}
 	if s.AudioCacheMB <= 0 {
-		s.AudioCacheMB = 2048
+		s.AudioCacheMB = defaultAudioCacheMB
+	}
+	if s.PictureCacheMB <= 0 {
+		s.PictureCacheMB = defaultPictureCacheMB
 	}
 	s.Volume = max(0, min(1, s.Volume))
 	return s

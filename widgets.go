@@ -183,8 +183,11 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 		row.Background(p.surface)
 	}
 	titleColor := p.text
-	if current {
+	switch {
+	case current:
 		titleColor = p.accent
+	case a.offline && !a.downloads.done[s.ID]:
+		titleColor = p.faint // not here, and the server is away
 	}
 	play := false
 	row.Children(func() {
@@ -221,6 +224,12 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 		if r.showAlbum {
 			ui.Text(c, s.Album).TextColor(p.muted).SingleLine().Grow(2).Basis(0).MinWidth(0)
 		}
+		// Whether it is downloaded, or how far.
+		ui.Box(c).Size(16, 16).Shrink(0).Children(func() {
+			if st, part := a.downloads.state(s.ID); st != dlNone {
+				a.downloadMark(c, st, part, 16)
+			}
+		})
 		// The heart shows on favorites, and under the pointer.
 		heart := ui.Box(c).Size(30, 30).Center().Shrink(0)
 		heart.Children(func() {
@@ -264,7 +273,7 @@ func (a *App) listHeader(c *ui.Context, lead string, showAlbum bool) {
 		if showAlbum {
 			head("ALBUM").Grow(2).Basis(0)
 		}
-		ui.Box(c).Size(30, 1).Shrink(0)
+		ui.Box(c).Size(16+12+30, 1).Shrink(0)
 		ui.Box(c).Width(44).Shrink(0).AlignItems(ui.End).Children(func() {
 			ui.Icon(c, icon("clock")).Size(13, 13).TextColor(p.faint)
 		})

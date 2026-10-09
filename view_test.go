@@ -1,11 +1,13 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,7 +22,13 @@ import (
 // small library, and no sound card.
 func testApp(t *testing.T) *App {
 	t.Helper()
-	srv := httptest.NewServer(http.NotFoundHandler())
+	return testAppWith(t, http.NotFoundHandler())
+}
+
+// testAppWith is testApp with a server that answers as handler does.
+func testAppWith(t *testing.T, handler http.Handler) *App {
+	t.Helper()
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	dir := t.TempDir()
 	a := newApp(dirs{data: dir, cache: filepath.Join(dir, "cache")}, true)
@@ -431,4 +439,110 @@ func TestSizes(t *testing.T) {
 			tt.Frame()
 		}
 	}
+}
+
+// wait runs what the app's goroutines hand back until cond holds.
+func wait(t *testing.T, a *App, what string, cond func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(2 * time.Millisecond) {
+		a.drain()
+		if cond() {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waited in vain for %s", what)
+		}
+	}
+}
+
+// Songs, albums and playlists download for offline: their files stay,
+// play without the server, and go when removed.
+func TestDownloads(t *testing.T) {
+	served := map[string]int{}
+	var mu sync.Mutex
+	down := false
+	a := testAppWith(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if down || !strings.HasPrefix(r.URL.Path, "/Audio/") {
+			http.Error(w, "away", http.StatusServiceUnavailable)
+			return
+		}
+		id := strings.Split(r.URL.Path, "/")[2]
+		served[id]++
+		w.Write([]byte("fLaC sound of " + id))
+	}))
+	d := a.downloads
+	tt := ui.NewTester(a.view, 1240, 800)
+
+	// An album, from its page.
+	a.router.Push("/album/al1")
+	tt.Frame()
+	click(t, tt, "Download")
+	wait(t, a, "the album's songs", func() bool { return d.done["s1"] && d.done["s2"] })
+	al := a.lib.Album("al1")
+	if st, _ := d.group(a.lib.AlbumSongs("al1")); st != dlDone || !d.albums["al1"] {
+		t.Errorf("the album's state is %d", st)
+	}
+	if b, err := os.ReadFile(d.store.Path("s1")); err != nil || string(b) != "fLaC sound of s1" {
+		t.Errorf("the file of s1: %q, %v", b, err)
+	}
+	tt.Frame()
+	wantTexts(t, tt, "Downloaded: click to remove")
+	// One song on its own, and one of a playlist.
+	d.add(a.lib.Song("s3"))
+	d.addPlaylist(a.lib.Playlist("p1"), []*library.Song{a.lib.Song("s4"), a.lib.Song("s1")})
+	wait(t, a, "the other songs", func() bool { return d.done["s3"] && d.done["s4"] })
+	if served["s1"] != 1 {
+		t.Errorf("s1 was fetched %d times", served["s1"])
+	}
+	a.router.Push("/downloads")
+	tt.Frame()
+	wantTexts(t, tt, "Downloads", "Albums", "Divide", "Playlists", "Road trip", "Songs", "Formation", "The A Team")
+
+	// The server goes away: what is downloaded still opens, and the
+	// app says it is offline.
+	mu.Lock()
+	down = true
+	mu.Unlock()
+	f, err := a.player.trackOf(a.lib.Song("s3")).Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(f)
+	f.Close()
+	if err != nil || string(b) != "fLaC sound of s3" {
+		t.Errorf("offline, s3 reads %q, %v", b, err)
+	}
+	a.sync()
+	wait(t, a, "the sync to fail", func() bool { return !a.syncing })
+	tt.Frame()
+	if !a.offline || !tt.HasText("Offline") {
+		t.Error("the app does not say it is offline")
+	}
+
+	// It all comes back in the next run.
+	b2 := newApp(a.dirs, true)
+	if n := len(b2.downloads.done); n != 4 || !b2.downloads.albums["al1"] || b2.downloads.playlists["p1"] == nil {
+		t.Errorf("the next run has %d songs downloaded", n)
+	}
+
+	// Removing: a song an album holds stays until the album goes.
+	d.remove(a.lib.Song("s2"))
+	if !d.done["s2"] {
+		t.Error("a song of a downloaded album was removed on its own")
+	}
+	d.removeAlbum(al)
+	if d.done["s2"] || d.store.Has("s2") || d.albums["al1"] {
+		t.Error("the album's songs stay after it was removed")
+	}
+	if !d.done["s1"] {
+		t.Error("a song the playlist holds went with the album")
+	}
+	d.removeAll()
+	if len(d.songs) != 0 || len(d.store.Keys()) != 0 {
+		t.Errorf("after removing all: %d songs, files %v", len(d.songs), d.store.Keys())
+	}
+	tt.Frame()
+	wantTexts(t, tt, "Nothing downloaded")
 }

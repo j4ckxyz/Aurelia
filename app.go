@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sync"
 	"time"
 
@@ -43,8 +44,11 @@ type App struct {
 	// editing is the theme being edited, which shows as it changes.
 	editing *themeEditor
 
-	images *imageCache
-	player *player
+	images    *imageCache
+	player    *player
+	downloads *downloads
+	// offline is set while the server does not answer.
+	offline bool
 	// system is what the system was last told plays, and when.
 	system   nowPlaying
 	told     string
@@ -93,8 +97,9 @@ func newApp(d dirs, silent bool) *App {
 	a.pages.queueChosen = -1
 	a.themes = theme.NewStore(d.themes())
 	a.lib = library.Empty()
-	a.images = newImageCache(d.images(), 18<<20, a.update)
+	a.images = newImageCache(d.images(), filepath.Join(d.downloads(), "art"), 18<<20, int64(a.settings.PictureCacheMB)<<20, a.update)
 	a.player = newPlayer(a)
+	a.downloads = newDownloads(a)
 	if s := a.settings.Session; s != nil {
 		a.client = jellyfin.New(*s)
 	}
@@ -322,9 +327,12 @@ func (a *App) sync() {
 				a.login.err = "The server no longer accepts this sign-in. Sign in again."
 			case err != nil:
 				a.syncErr = friendly(err)
+				a.offline = true
 			default:
+				a.offline = false
 				a.setLibrary(l)
 				a.warmImages()
+				a.downloads.retry()
 			}
 		})
 	}()
@@ -357,15 +365,33 @@ func (a *App) warmImages() {
 		return
 	}
 	px := a.pixels(tileArt)
-	for i := range a.lib.Albums {
-		if al := &a.lib.Albums[i]; al.ImageTag != "" {
+	// As many as fit half the room pictures have, the albums added last
+	// first: the rest are fetched as they show.
+	budget := int(int64(a.settings.PictureCacheMB) << 20 / 2 / (40 << 10))
+	albums := slices.Clone(a.albumsBy("Recently Added"))
+	for _, al := range albums[:min(len(albums), budget)] {
+		if al.ImageTag != "" {
 			a.images.warm(imageKey(al.ID, al.ImageTag, px), c.ImageURL(al.ID, "Primary", al.ImageTag, px))
 		}
 	}
+	budget -= len(albums)
 	for i := range a.lib.Artists {
-		if ar := &a.lib.Artists[i]; ar.ImageTag != "" {
+		if ar := &a.lib.Artists[i]; ar.ImageTag != "" && i < budget {
 			a.images.warm(imageKey(ar.ID, ar.ImageTag, px), c.ImageURL(ar.ID, "Primary", ar.ImageTag, px))
 		}
+	}
+}
+
+// pinArt keeps the pictures of an item for good, at the sizes the app
+// shows them, as those of what is downloaded.
+func (a *App) pinArt(id, tag string) {
+	c := a.clientNow()
+	if c == nil || id == "" || tag == "" {
+		return
+	}
+	for _, dip := range []float32{thumbArt, tileArt, heroArt} {
+		px := a.pixels(dip)
+		a.images.pin(imageKey(id, tag, px), c.ImageURL(id, "Primary", tag, px))
 	}
 }
 

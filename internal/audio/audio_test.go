@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -299,5 +300,45 @@ func TestEngineOnTheDevice(t *testing.T) {
 	}
 	if st := e.State(); st.TrackID != "" {
 		t.Errorf("state %+v after the end", st)
+	}
+}
+
+// A file copied into a cache is whole there; a removed one is gone.
+func TestImportAndRemove(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "song.flac")
+	if err := os.WriteFile(src, []byte("fLaC and the rest"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCache(filepath.Join(dir, "cache"), 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Has("a") || c.Path("a") != "" {
+		t.Error("an empty cache has the file")
+	}
+	if err := c.Import("a", src); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Has("a") || c.Path("a") == "" || len(c.Keys()) != 1 || c.Size() != 17 {
+		t.Errorf("after Import: has %v, keys %v, size %d", c.Has("a"), c.Keys(), c.Size())
+	}
+	f, err := c.Open("a", nil) // whole: no request is made
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Wait(); err != nil {
+		t.Error(err)
+	}
+	b, _ := io.ReadAll(f)
+	f.Close()
+	if string(b) != "fLaC and the rest" {
+		t.Errorf("read %q", b)
+	}
+	if err := c.Remove("a"); err != nil || c.Has("a") {
+		t.Errorf("after Remove: %v, has %v", err, c.Has("a"))
+	}
+	if err := c.Remove("a"); err != nil {
+		t.Errorf("removing what is not there: %v", err)
 	}
 }

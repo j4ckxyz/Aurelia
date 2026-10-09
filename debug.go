@@ -96,6 +96,15 @@ func (a *App) debug(dir, line string) {
 			}
 			a.player.toggle()
 		})
+	case "download":
+		// "download album <n>" downloads the nth album by name.
+		do(func() {
+			n, _ := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(arg, "album")))
+			if albums := a.albumsBy("Name"); n < len(albums) {
+				a.downloads.addAlbum(albums[n], a.lib.AlbumSongs(albums[n].ID))
+				a.goTo("/album/" + albums[n].ID)
+			}
+		})
 	case "next":
 		do(func() { a.player.skip() })
 	case "seek":
@@ -121,6 +130,7 @@ func (a *App) debug(dir, line string) {
 				a.router.Location(), len(a.lib.Albums), len(a.lib.Artists), len(a.lib.Songs), len(a.lib.Playlists), a.syncing, a.syncErr,
 				name, st.Position.Round(time.Millisecond), st.Duration.Round(time.Second), st.Paused, st.Buffering, st.Loaded, len(a.player.queue),
 				len(a.images.mem), a.images.memBytes, m.HeapAlloc, m.Sys)
+			out += fmt.Sprintf("downloads: %d songs asked, %d here, %d to go, %d failed, offline=%v\n", len(a.downloads.songs), len(a.downloads.done), len(a.downloads.order)+len(a.downloads.active), len(a.downloads.failed), a.offline)
 			out += "system: " + strings.Join(strings.Fields(a.system.describe()), " ") + "\n"
 		})
 		os.WriteFile(filepath.Join(dir, "state"), []byte(out), 0o644)

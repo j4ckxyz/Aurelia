@@ -464,3 +464,80 @@ func (f *File) Close() error {
 	e.release()
 	return nil
 }
+
+// Wait blocks until the whole file is downloaded, and returns why it
+// could not be.
+func (f *File) Wait() error {
+	e := f.e
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for !e.done && !f.aborted {
+		e.cond.Wait()
+	}
+	if f.aborted && !e.done {
+		return ErrAborted
+	}
+	return e.err
+}
+
+// Path returns where the whole file of key is, "" when the cache does not
+// hold it.
+func (c *Cache) Path(key string) string {
+	key = safeKey(key)
+	if !c.Has(key) {
+		return ""
+	}
+	return filepath.Join(c.dir, key+".audio")
+}
+
+// Keys returns the keys of the whole files the cache holds.
+func (c *Cache) Keys() []string {
+	des, _ := os.ReadDir(c.dir)
+	var keys []string
+	for _, de := range des {
+		if name, ok := strings.CutSuffix(de.Name(), ".audio"); ok {
+			keys = append(keys, name)
+		}
+	}
+	return keys
+}
+
+// Import copies the file at path into the cache as the whole file of
+// key, as a song the other cache already downloaded.
+func (c *Cache) Import(key, path string) error {
+	key = safeKey(key)
+	src, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	c.mu.Lock()
+	c.seq++
+	tmp := filepath.Join(c.dir, fmt.Sprintf("%s.audio.%d.part", key, c.seq))
+	c.mu.Unlock()
+	dst, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(dst, src)
+	if cerr := dst.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, filepath.Join(c.dir, key+".audio"))
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
+}
+
+// Remove deletes the file of key. A file being read stays until it is
+// closed, on systems that delete open files; elsewhere Remove fails.
+func (c *Cache) Remove(key string) error {
+	err := os.Remove(filepath.Join(c.dir, safeKey(key)+".audio"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}

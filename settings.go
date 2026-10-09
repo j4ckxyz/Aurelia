@@ -58,8 +58,10 @@ func (a *App) measureCaches() {
 
 var qualities = []string{"Original", "320 kbps", "192 kbps", "128 kbps"}
 var qualityRates = []int{0, 320, 192, 128}
-var cacheLimits = []string{"1 GB", "2 GB", "5 GB", "10 GB", "20 GB"}
-var cacheLimitMB = []int{1024, 2048, 5120, 10240, 20480}
+var cacheLimits = []string{"100 MB", "300 MB", "1 GB", "2 GB", "5 GB"}
+var cacheLimitMB = []int{100, 300, 1024, 2048, 5120}
+var pictureLimits = []string{"50 MB", "150 MB", "500 MB"}
+var pictureLimitMB = []int{50, 150, 500}
 
 func indexOf(list []int, v int) int {
 	for i, x := range list {
@@ -67,7 +69,7 @@ func indexOf(list []int, v int) int {
 			return i
 		}
 	}
-	return 0
+	return 1 // the default of each list
 }
 
 // settingsPage shows the settings: the theme, how songs play, the
@@ -147,7 +149,13 @@ func (a *App) settingsPage(c *ui.Context) {
 
 			a.settingsHead(c, "Storage")
 			a.card(c, func() {
-				a.setting(c, "Songs kept on this computer", fmt.Sprintf("Songs you play are kept to start at once next time. Using %s; the oldest make room.", bytesText(a.sizes.audio)), func() {
+				d := a.downloads
+				a.setting(c, "Downloads", fmt.Sprintf("%s kept to play without the server, using %s. They stay until you remove them.", count(len(d.done), "song", "songs"), bytesText(d.size())), func() {
+					if a.pillButton(c, "", "Manage", false).Clicked() {
+						a.goTo("/downloads")
+					}
+				})
+				a.setting(c, "Songs played lately", fmt.Sprintf("Kept for a while so that they start at once and play again without the network. Using %s; the oldest make room.", bytesText(a.sizes.audio)), func() {
 					lim := cacheLimits[indexOf(cacheLimitMB, a.settings.AudioCacheMB)]
 					if ui.Select(c.Key("cache"), &lim, cacheLimits).Width(110).Changed() {
 						for i, name := range cacheLimits {
@@ -157,13 +165,26 @@ func (a *App) settingsPage(c *ui.Context) {
 						}
 						a.player.cache.SetMaxBytes(int64(a.settings.AudioCacheMB) << 20)
 						a.saveSettings()
+						a.sizes.at = time.Time{}
 					}
 					if a.pillButton(c, "", "Clear", false).Clicked() {
 						a.player.cache.Clear()
 						a.sizes.at = time.Time{}
 					}
 				})
-				a.setting(c, "Pictures", fmt.Sprintf("Album and artist pictures, kept so that they show at once. Using %s.", bytesText(a.sizes.images)), func() {
+				a.setting(c, "Pictures", fmt.Sprintf("Album and artist pictures, kept so that they show at once. Using %s; those shown longest ago make room.", bytesText(a.sizes.images)), func() {
+					lim := pictureLimits[indexOf(pictureLimitMB, a.settings.PictureCacheMB)]
+					if ui.Select(c.Key("pictures"), &lim, pictureLimits).Width(110).Changed() {
+						for i, name := range pictureLimits {
+							if name == lim {
+								a.settings.PictureCacheMB = pictureLimitMB[i]
+							}
+						}
+						a.images.maxDisk.Store(int64(a.settings.PictureCacheMB) << 20)
+						go a.images.trim()
+						a.saveSettings()
+						a.sizes.at = time.Time{}
+					}
 					if a.pillButton(c, "", "Clear", false).Clicked() {
 						a.images.clear()
 						a.sizes.at = time.Time{}

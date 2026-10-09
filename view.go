@@ -53,6 +53,9 @@ func (a *App) frame(c *ui.Context) {
 	}
 	toasts = toasts[:0]
 	a.search.follow(a)
+	if a.downloads.busy() {
+		c.After(300 * time.Millisecond) // the rings of what downloads fill
+	}
 }
 
 // view builds the window.
@@ -141,6 +144,9 @@ func (a *App) route(c *ui.Context, r *ui.Route) {
 	case r.Match("/favorites"):
 		r.Title("Favorites")
 		a.favoritesPage(c)
+	case r.Match("/downloads"):
+		r.Title("Downloads")
+		a.downloadsPage(c)
 	case r.Match("/search"):
 		r.Title("Search")
 		a.searchPage(c)
@@ -281,6 +287,7 @@ func (a *App) sidebar(c *ui.Context) {
 			a.navItem(c, "music", "Songs", "/songs", "")
 			a.navItem(c, "heart", "Favorites", "/favorites", "")
 			a.navItem(c, "list-music", "Playlists", "/playlists", "")
+			a.navItem(c, "circle-arrow-down", "Downloads", "/downloads", "")
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(4, 10, 10).Gap(1).Children(func() {
 			if len(a.lib.Playlists) > 0 {
@@ -386,6 +393,21 @@ func (a *App) topBar(c *ui.Context) {
 	ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 16, 0, pagePad).Gap(8).DragWindow().Children(func() {
 		a.search.field(a, c)
 		ui.Spacer(c)
+		if a.offline {
+			// The server does not answer: what is downloaded plays.
+			b := ui.ButtonBase(c).Height(28).Padding(0, 12, 0, 10).Gap(7).Radius(14).Background(p.surface).Shrink(0).
+				Tooltip("The server is not answering. Downloaded songs still play. Click to try again.")
+			if b.Hovered() {
+				b.Background(p.hover)
+			}
+			b.Children(func() {
+				ui.Icon(c, icon("wifi-off")).Size(14, 14).TextColor(p.warning)
+				ui.Text(c, "Offline").FontSize(12).FontWeight(600).TextColor(p.muted)
+			})
+			if b.Clicked() {
+				a.sync()
+			}
+		}
 		a.windowControls(c)
 	})
 	_ = p
@@ -485,6 +507,13 @@ func (a *App) songMenu(m *ui.Menu, s *library.Song) {
 	if m.Item(label).Chosen() {
 		a.setFavorite(s.ID, &s.Favorite, !s.Favorite)
 	}
+	if st, _ := a.downloads.state(s.ID); st == dlNone {
+		if m.Item("Download").Chosen() {
+			a.downloads.add(s)
+		}
+	} else if m.Item("Remove Download").Disabled(a.downloads.held(s.ID)).Chosen() {
+		a.downloads.remove(s)
+	}
 }
 
 // albumMenu is the menu of an album.
@@ -514,5 +543,12 @@ func (a *App) albumMenu(m *ui.Menu, al *library.Album) {
 	}
 	if m.Item(label).Chosen() {
 		a.setFavorite(al.ID, &al.Favorite, !al.Favorite)
+	}
+	if st, _ := a.downloads.group(songs); st == dlNone {
+		if m.Item("Download").Disabled(len(songs) == 0).Chosen() {
+			a.downloads.addAlbum(al, songs)
+		}
+	} else if m.Item("Remove Download").Chosen() {
+		a.downloads.removeAlbum(al)
 	}
 }

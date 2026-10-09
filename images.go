@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -22,8 +24,15 @@ import (
 // there yet; the cache loads on other goroutines and asks for a frame
 // when a picture is in.
 type imageCache struct {
-	dir    string
-	client *http.Client
+	dir string
+	// pinDir holds the pictures of what is downloaded for offline,
+	// which the cache's limit does not remove.
+	pinDir string
+	// maxDisk is the room the pictures of dir may take; those shown
+	// longest ago make room.
+	maxDisk atomic.Int64
+	written atomic.Int64 // since the disk was last trimmed
+	client  *http.Client
 	// post runs a function on the interface's goroutine and draws a
 	// frame.
 	post func(func())
@@ -54,17 +63,91 @@ type imageReq struct {
 	key, url string
 	wanted   time.Time
 	diskOnly bool // fetch to disk, decode nothing
+	pin      bool // and keep in pinDir
 }
 
-func newImageCache(dir string, maxBytes int64, post func(func())) *imageCache {
+func newImageCache(dir, pinDir string, maxBytes, maxDisk int64, post func(func())) *imageCache {
 	os.MkdirAll(dir, 0o755)
 	ic := &imageCache{
-		dir: dir, client: &http.Client{Timeout: 30 * time.Second}, post: post,
+		dir: dir, pinDir: pinDir, client: &http.Client{Timeout: 30 * time.Second}, post: post,
 		mem: map[string]*list.Element{}, lru: list.New(), maxBytes: maxBytes,
 		failed: map[string]time.Time{}, pending: map[string]*imageReq{},
 	}
 	ic.cond = sync.NewCond(&ic.mu)
+	ic.maxDisk.Store(maxDisk)
+	go ic.trim()
 	return ic
+}
+
+// pin keeps a picture for good, as that of a downloaded song: copied from
+// the cache when it is there, else fetched.
+func (ic *imageCache) pin(key, url string) {
+	pinned := filepath.Join(ic.pinDir, key+".jpg")
+	if _, err := os.Stat(pinned); err == nil {
+		return
+	}
+	if data, err := os.ReadFile(ic.path(key)); err == nil {
+		os.MkdirAll(ic.pinDir, 0o755)
+		os.WriteFile(pinned, data, 0o644)
+		return
+	}
+	ic.mu.Lock()
+	if req := ic.pending[key]; req != nil {
+		req.pin = true
+	} else {
+		req = &imageReq{key: key, url: url, diskOnly: true, pin: true}
+		ic.pending[key] = req
+		ic.low = append(ic.low, req)
+		ic.start()
+		ic.cond.Signal()
+	}
+	ic.mu.Unlock()
+}
+
+// unpinAll forgets the pictures kept for good.
+func (ic *imageCache) unpinAll() {
+	des, _ := os.ReadDir(ic.pinDir)
+	for _, de := range des {
+		os.Remove(filepath.Join(ic.pinDir, de.Name()))
+	}
+}
+
+// trim removes the pictures shown longest ago until those of dir fit
+// maxDisk.
+func (ic *imageCache) trim() {
+	ic.written.Store(0)
+	limit := ic.maxDisk.Load()
+	des, err := os.ReadDir(ic.dir)
+	if err != nil || limit <= 0 {
+		return
+	}
+	type file struct {
+		name string
+		size int64
+		at   time.Time
+	}
+	var files []file
+	var total int64
+	for _, de := range des {
+		if info, err := de.Info(); err == nil && !de.IsDir() {
+			files = append(files, file{de.Name(), info.Size(), info.ModTime()})
+			total += info.Size()
+		}
+	}
+	if total <= limit {
+		return
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].at.Before(files[j].at) })
+	// Somewhat under the limit, so that the next pictures do not trim
+	// again at once.
+	for _, f := range files {
+		if total <= limit*9/10 {
+			break
+		}
+		if os.Remove(filepath.Join(ic.dir, f.name)) == nil {
+			total -= f.size
+		}
+	}
 }
 
 // get returns the picture of key, or nil while it loads from url. Call it
@@ -186,11 +269,19 @@ func (ic *imageCache) loader() {
 // load reads a picture from the disk, or from the server into the disk.
 func (ic *imageCache) load(req *imageReq, diskOnly bool) (*ui.Bitmap, int64, error) {
 	path := ic.path(req.key)
+	pinned := filepath.Join(ic.pinDir, req.key+".jpg")
 	data, err := os.ReadFile(path)
-	if err != nil {
+	if err == nil {
+		// Shown again: it is the last the cache removes. Once a day is
+		// often enough to tell.
+		if info, serr := os.Stat(path); serr == nil && time.Since(info.ModTime()) > 24*time.Hour {
+			now := time.Now()
+			os.Chtimes(path, now, now)
+		}
+	} else if data, err = os.ReadFile(pinned); err != nil {
 		if diskOnly {
-			// Warming is a courtesy: slowly, so that the server and the
-			// pictures the view waits for are not held up.
+			// Fetching ahead is a courtesy: slowly, so that the server
+			// and the pictures the view waits for are not held up.
 			time.Sleep(60 * time.Millisecond)
 		}
 		resp, err := ic.client.Get(req.url)
@@ -208,6 +299,18 @@ func (ic *imageCache) load(req *imageReq, diskOnly bool) (*ui.Bitmap, int64, err
 		tmp := path + ".tmp"
 		if os.WriteFile(tmp, data, 0o644) == nil {
 			os.Rename(tmp, path)
+		}
+		if ic.written.Add(1) >= 200 {
+			go ic.trim()
+		}
+	}
+	ic.mu.Lock()
+	pin := req.pin
+	ic.mu.Unlock()
+	if pin {
+		if _, err := os.Stat(pinned); err != nil {
+			os.MkdirAll(ic.pinDir, 0o755)
+			os.WriteFile(pinned, data, 0o644)
 		}
 	}
 	if diskOnly {
