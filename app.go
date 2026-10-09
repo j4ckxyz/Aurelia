@@ -75,6 +75,7 @@ type App struct {
 	volumeDirty bool
 
 	sizes   cacheSizes
+	updates updates
 	login   loginForm
 	search  searchState
 	pages   pageStates

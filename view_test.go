@@ -112,7 +112,7 @@ func TestNavigation(t *testing.T) {
 		"/favorites":    {"Favorites", "Formation"},
 		"/playlists":    {"1 playlist", "Road trip"},
 		"/playlist/p1":  {"PLAYLIST", "Road trip"},
-		"/settings":     {"Appearance", "Tokyo Night", "Normalize volume", "Sign out", "Ada"},
+		"/settings":     {"Appearance", "Tokyo Night", "Normalize volume", "Sign out", "Ada", "Check for updates", "Update automatically"},
 		"/lyrics":       {"Nothing is playing"},
 		"/nowhere":      {"Nothing here"},
 		"/album/gone":   {"Album not found"},

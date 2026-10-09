@@ -107,6 +107,13 @@ func (a *App) toastLayer(c *ui.Context, bottom float32) {
 						ui.Text(c, t.Description).FontSize(12).TextColor(p.muted).MaxLines(4)
 					}
 				})
+				if t.Action != "" {
+					act := toast.ActionButton().Height(26).Padding(0, 12).Radius(13).Background(p.accent).Shrink(0)
+					if act.Hovered() {
+						act.Background(p.accentHover)
+					}
+					act.Children(func() { ui.Text(c, t.Action).FontSize(12).FontWeight(600).TextColor(p.onAcc) })
+				}
 				cl := toast.CloseButton().Size(22, 22).Radius(11).Label("Dismiss")
 				if cl.Hovered() {
 					cl.Background(p.hover)

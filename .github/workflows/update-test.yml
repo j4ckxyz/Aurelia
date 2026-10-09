@@ -1,0 +1,40 @@
+# Checks, on a real macOS, Windows and Linux, that an installed Aurelia
+# replaces itself with a newer version: tools/update-test.sh.
+name: Update test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - update.go
+      - tools/update-test.sh
+      - go.mod
+      - .github/workflows/update-test.yml
+
+jobs:
+  update:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Find NSIS, which makes the Windows installer
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          if [ -d "/c/Program Files (x86)/NSIS" ]; then
+            echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+          else
+            choco install nsis -y --no-progress
+            echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+          fi
+      - name: Install an old version, publish a new one, and update
+        shell: bash
+        run: tools/update-test.sh

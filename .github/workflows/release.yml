@@ -1,30 +1,74 @@
-# Builds the apps of every platform and attaches them to a release.
+# Releases a new version when mygo.json names one: builds the apps of
+# every platform, signs their updates, and publishes them as a GitHub
+# release, from which installed apps update themselves.
 #
-#   git tag v0.1.0 && git push origin v0.1.0
-#
-# or run it by hand from the Actions tab, which keeps the builds as the
-# run's artifacts without making a release.
+# To release: set "version" in mygo.json, describe it under a heading of
+# its number in CHANGELOG.md, and push to main.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: [mygo.json]
   workflow_dispatch:
 
 permissions:
   contents: write # the release, and the uploads to it
 
+concurrency: release
+
 jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+      release: ${{ steps.read.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the version, and whether it is released
+        id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(jq -r .version mygo.json)
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ "$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2> /dev/null)" = "false" ]; then
+            echo "Version $version is released already: nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          # The notes are the version's part of the changelog.
+          notes=$(awk -v v="$version" '
+            /^## / { on = ($2 == v || $2 == "[" v "]") ; next }
+            on { print }' CHANGELOG.md)
+          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          # A draft, which the builds upload to, and which is published
+          # once every platform is there.
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+              --title "Aurelia $version" --notes "$notes"
+          fi
+
   build:
     name: ${{ matrix.name }}
+    needs: version
+    if: needs.version.outputs.release == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # MyGo needs no cgo, so Ubuntu builds Windows' apps too; the
-          # disk images of macOS need a Mac.
-          - { name: macOS, os: macos-latest, platform: "darwin/arm64,darwin/amd64" }
+          # disk image of macOS needs a Mac.
+          - { name: macOS, os: macos-latest, platform: "darwin/universal" }
           - { name: Windows, os: ubuntu-latest, platform: "windows/amd64,windows/arm64" }
           - { name: Linux, os: ubuntu-latest, platform: "linux/amd64,linux/arm64" }
     steps:
@@ -36,38 +80,50 @@ jobs:
         if: matrix.name == 'Windows'
         run: sudo apt-get update && sudo apt-get install -y nsis
       - name: Build
+        env:
+          # Signs the updates: installed apps take only what it signed.
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: go tool mygo build -platform "${{ matrix.platform }}"
       - name: Collect what to publish
         shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           mkdir dist
           for dir in build/*/; do
-            target=$(basename "$dir") # as darwin-arm64
-            for f in "$dir"*.dmg "$dir"*.exe "$dir"*.deb "$dir"*.tar.gz; do
+            target=$(basename "$dir") # as windows-amd64
+            for f in "$dir"*; do
               [ -f "$f" ] || continue
               name=$(basename "$f")
               case "$name" in
-                *amd64*|*arm64*|*x64*|*x86_64*|*aarch64*) ;; # names its platform already
-                *) name="${name%.*}-$target.${name##*.}" ;;
+                # The updates, and the archives their lists name: as they are.
+                update-*.json|*.tar.gz|*.delta|*.deb|install.sh) cp "$f" "dist/$name" ;;
+                # The installers, named for their platform.
+                *.dmg) cp "$f" "dist/Aurelia-$VERSION-macos.dmg" ;;
+                *" Setup "*.exe) cp "$f" "dist/Aurelia-Setup-$VERSION-$target.exe" ;;
+                Aurelia.exe) cp "$f" "dist/Aurelia-$VERSION-$target-portable.exe" ;;
               esac
-              cp "$f" "dist/${name// /-}"
             done
           done
           ls -la dist
+          ls dist/update-*.json > /dev/null # signed updates must be among them
       - uses: actions/upload-artifact@v7
         with:
           name: Aurelia-${{ matrix.name }}
           path: dist/*
           if-no-files-found: error
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            # Another platform's job may make it at the same moment.
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --title "Aurelia ${GITHUB_REF_NAME#v}" --generate-notes || true
-          fi
-          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+        run: gh release upload "${{ needs.version.outputs.tag }}" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish:
+    name: Publish
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ needs.version.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --draft=false --latest

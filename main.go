@@ -22,6 +22,9 @@ import (
 )
 
 func main() {
+	if commandLine(os.Args[1:]) {
+		return
+	}
 	// A music player's heap is small and steady: collect it eagerly, so
 	// that the app stays near the memory it needs.
 	debug.SetGCPercent(25)
@@ -105,6 +108,7 @@ func (a *App) open() {
 		a.start()
 		a.mediaKeys()
 		a.system.init(a)
+		a.startUpdates()
 	}
 	win.Update(a.drain) // what happened before there was a window
 	a.debugHook()
@@ -183,6 +187,14 @@ func (a *App) menu() *mygo.Menu {
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
+		{Label: "File", Submenu: []*mygo.MenuItem{
+			item("Check for Updates…", "", func() {
+				if a.signedIn() {
+					a.goTo("/settings")
+				}
+				a.checkForUpdates(true)
+			}),
+		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleUndo},
 			{Role: mygo.RoleRedo},

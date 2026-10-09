@@ -2,7 +2,18 @@
   "name": "Aurelia",
   "identifier": "dev.aurelia.app",
   "version": "0.1.0",
-  "copyright": "A native Jellyfin music client, built with MyGo",
+  "copyright": "A native Jellyfin music player, built with MyGo",
   "out": "build",
-  "macos": { "minimumSystemVersion": "13.0" }
+  "macos": {
+    "minimumSystemVersion": "13.0"
+  },
+  "linux": {
+    "command": "aurelia",
+    "comment": "A native music player for Jellyfin",
+    "categories": ["AudioVideo", "Audio", "Player"]
+  },
+  "updates": {
+    "publicKey": "RqwsrdwgOB7M3TPu0+MvS9Yrs+ZA5lSGSXyzJNAVyuU=",
+    "github": "j4ckxyz/Aurelia"
+  }
 }

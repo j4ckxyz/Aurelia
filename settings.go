@@ -10,7 +10,6 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"aurelia/internal/jellyfin"
 	"aurelia/internal/theme"
 )
 
@@ -224,9 +223,12 @@ func (a *App) settingsPage(c *ui.Context) {
 				}
 			})
 
+			a.settingsHead(c, "Updates")
+			a.updatesCard(c)
+
 			a.settingsHead(c, "About")
 			a.card(c, func() {
-				a.setting(c, "Aurelia "+jellyfin.Version, "A native music player for Jellyfin, built with MyGo "+mygo.Version+". Icons by Lucide, under the ISC license.", nil2)
+				a.setting(c, "About Aurelia", "A native music player for Jellyfin, built with MyGo "+mygo.Version+". Icons by Lucide, under the ISC license. Aurelia is not affiliated with the Jellyfin project.", nil2)
 			})
 		})
 	})
