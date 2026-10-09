@@ -12,7 +12,7 @@
 #   sh install.sh ARCHIVE       installs a release's archive you have
 #   sh install.sh --uninstall   removes the app; settings and music stay
 #
-# Aurelia then updates itself (Settings ▸ Updates).
+# Aurelia then updates itself (Settings > Updates).
 set -eu
 
 repo='j4ckxyz/Aurelia'
@@ -61,7 +61,7 @@ if [ -z "$archive" ]; then
 	url=$(printf '%s' "$manifest" | sed -n 's/.*"url": *"\([^"]*\)".*/\1/p' | head -n 1)
 	version=$(printf '%s' "$manifest" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' | head -n 1)
 	[ -n "$url" ] || fail "the latest release has no build for macOS"
-	say "Downloading Aurelia $version…"
+	say "Downloading Aurelia ${version}..."
 	archive="$work/aurelia.tar.gz"
 	curl -fL --progress-bar "$url" -o "$archive" || fail "could not download $url"
 fi

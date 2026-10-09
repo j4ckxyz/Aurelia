@@ -1,0 +1,70 @@
+# Runs the install commands of the README on a real macOS, Linux and
+# Windows, against the latest release, and checks that the app they
+# install runs.
+name: Install test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - install.ps1
+      - .github/workflows/install-test.yml
+  release:
+    types: [published]
+
+jobs:
+  unix:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install with the script of this commit
+        env:
+          AURELIA_NO_OPEN: "1"
+        run: sh install.sh
+      - name: Run what was installed
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            app=/Applications/Aurelia.app/Contents/MacOS/Aurelia
+            [ -x "$app" ] || app="$HOME/Applications/Aurelia.app/Contents/MacOS/Aurelia"
+            # Nothing marked it as downloaded from the internet.
+            ! xattr "${app%/Contents/MacOS/*}" | grep -q com.apple.quarantine
+          else
+            app="$HOME/.local/bin/aurelia"
+          fi
+          "$app" --version
+          "$app" --version | grep -Eq '^Aurelia [0-9]+\.[0-9]+\.[0-9]+$'
+          "$app" --self-update | tee update.txt
+          grep -Eq '^(up to date|updated):' update.txt
+      - name: Uninstall
+        run: sh install.sh --uninstall
+
+  windows:
+    name: windows-latest
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install with the script of this commit
+        shell: pwsh
+        env:
+          AURELIA_NO_OPEN: "1"
+        run: ./install.ps1
+      - name: Run what was installed
+        shell: pwsh
+        run: |
+          $app = Join-Path $env:LOCALAPPDATA 'Programs\Aurelia\Aurelia.exe'
+          if (-not (Test-Path $app)) { throw "Aurelia was not installed at $app" }
+          # The app has no console: it writes what it says to a file.
+          Start-Process -FilePath $app -ArgumentList '--write-version', "$PWD\version.txt" -Wait
+          Get-Content version.txt
+          if ((Get-Content version.txt) -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'the installed app did not tell its version' }
+          Start-Process -FilePath $app -ArgumentList '--self-update', "$PWD\update.txt" -Wait
+          Get-Content update.txt
+          if ((Get-Content update.txt) -notmatch '^(up to date|updated):') { throw 'the installed app could not check for updates' }
+          if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\Aurelia\Uninstall.exe'))) { throw 'no uninstaller' }
