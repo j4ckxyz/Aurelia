@@ -256,7 +256,7 @@ func (a *App) route(c *ui.Context, r *ui.Route) {
 		a.downloadsPage(c)
 	case r.Match("/search"):
 		r.Title("Search")
-		a.searchPage(c)
+		a.searchPage(c, r)
 	case r.Match("/lyrics"):
 		r.Title("Lyrics")
 		a.lyricsPage(c)
