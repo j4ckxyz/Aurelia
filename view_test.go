@@ -196,16 +196,17 @@ func TestQueue(t *testing.T) {
 		t.Errorf("the queue is %s", got)
 	}
 	click(t, tt, "Queue")
-	wantTexts(t, tt, "NOW PLAYING", "NEXT UP", "The A Team", "Formation")
+	wantTexts(t, tt, "NOW PLAYING", "NEXT IN QUEUE", "The A Team", "Formation")
 	p.remove(2)
 	if got := queueIDs(p); got != "s1 s2 s3" {
 		t.Errorf("after removing: %s", got)
 	}
-	// Shuffle keeps the song playing first, and gives the order back.
+	// Shuffle keeps the songs played and the one playing where they are,
+	// and gives the order back.
 	a.router.Push("/home") // where the player's Shuffle is the only one
 	tt.Frame()
 	click(t, tt, "Shuffle")
-	if !a.settings.Shuffle || p.current().ID != "s2" || p.index != 0 || len(p.queue) != 3 {
+	if !a.settings.Shuffle || p.current().ID != "s2" || p.index != 1 || len(p.queue) != 3 {
 		t.Errorf("shuffled: %s at %d", queueIDs(p), p.index)
 	}
 	click(t, tt, "Shuffle")
@@ -737,7 +738,7 @@ func TestHomeContinues(t *testing.T) {
 	}
 	wantTexts(t, tt, "Recently added", "Your top artists", "Your playlists")
 	// A queue that came back from the last run: nothing plays yet.
-	a.player.restore(a.lib.AlbumSongs("al1"), 1, 42*time.Second)
+	a.player.restore(a.lib.AlbumSongs("al1"), nil, 1, 0, 0, 42*time.Second)
 	tt.Frame()
 	wantTexts(t, tt, "Jump back in", "Perfect", "Continue · 0:42 of 4:23", "Resume")
 	// And what plays now, with the button to pause it.

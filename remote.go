@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -181,7 +182,13 @@ func (a *App) playHere(resume bool) {
 	if p.current() == nil {
 		return
 	}
-	p.unshuffled = append([]*library.Song(nil), p.queue...)
+	// The device's queue is in the order it plays, which shuffling off
+	// keeps.
+	p.unshuffled = nil
+	if a.settings.Shuffle {
+		lo, hi := p.addedRun()
+		p.unshuffled = slices.Concat(p.queue[:lo], p.queue[hi:])
+	}
 	p.cold, p.paused, p.finished, p.resumeAt = true, true, false, st.Position
 	if playing && resume {
 		p.toggle()
@@ -255,8 +262,9 @@ func (a *App) mirror(dev jellyfin.Device) {
 		p.queue, p.unshuffled = queue, queue
 	}
 	// The song playing, by its place in the device's queue if the
-	// library has all of it, else by its name.
-	p.index = -1
+	// library has all of it, else by its name. Which of its songs were
+	// added it does not tell.
+	p.index, p.added, p.playNexts = -1, 0, 0
 	if pl.Index >= 0 && pl.Index < len(p.queue) && p.queue[pl.Index].ID == pl.Item.ID {
 		p.index = pl.Index
 	} else {

@@ -339,25 +339,27 @@ func (a *App) queuePanel(c *ui.Context) {
 		}
 		// The song playing, then the songs after it, which drag to
 		// another place.
-		label := func(text string, top float32) {
-			ui.Text(c, text).FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(top, 18, 6).Shrink(0)
+		label := func(c *ui.Context, text string, top float32) ui.Element {
+			return ui.Text(c, text).FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(top, 18, 6).Shrink(0)
 		}
-		label("NOW PLAYING", 6)
+		label(c, "NOW PLAYING", 6)
 		ui.Box(c).Shrink(0).Children(func() { a.queueRow(c.Key("current"), pl.current(), pl.index) })
-		start := pl.index + 1
-		n := len(pl.queue) - start
-		if n <= 0 {
+		rows := queueRows{start: pl.index + 1, added: pl.added, n: len(pl.queue) - pl.index - 1}
+		if rows.n <= 0 {
 			return
 		}
-		label("NEXT UP", 16)
+		if rows.added == 0 {
+			label(c, "NEXT UP", 16)
+		}
 		remove := -1
 		state := &a.pages.queueList
-		state.Reorder = func(rows []int, to int) {
-			from := make([]int, len(rows))
-			for i, r := range rows {
-				from[i] = start + r
+		state.Header = rows.header
+		state.Reorder = func(moved []int, to int) {
+			from := make([]int, len(moved))
+			for i, r := range moved {
+				from[i] = rows.at(r)
 			}
-			pl.move(from, start+to)
+			pl.move(from, rows.at(to))
 		}
 		if pl.farOwns() {
 			// The queue is the device's, which only it changes: its songs
@@ -368,12 +370,20 @@ func (a *App) queuePanel(c *ui.Context) {
 		// A click chooses a song and a double click plays it: the list
 		// tells, so that its rows stay free to be dragged.
 		chosen := &a.pages.queueChosen
-		if *chosen >= n {
+		if *chosen >= rows.count() {
 			*chosen = -1
 		}
 		state.Selected = chosen
-		list := ui.List(c.Key("queue"), state, n, func(i int) {
-			if at := start + i; at < len(pl.queue) && a.queueRow(c.Key(at), pl.queue[at], at) {
+		list := ui.List(c.Key("queue"), state, rows.count(), func(i int) {
+			at := rows.at(i)
+			switch {
+			case rows.header(i):
+				text, top := "NEXT IN QUEUE", float32(16)
+				if i > 0 {
+					text, top = "NEXT UP", 12
+				}
+				label(c.Key(text), text, top).Background(p.sidebar)
+			case at < len(pl.queue) && a.queueRow(c.Key(at), pl.queue[at], at):
 				remove = at
 			}
 		}).Grow(1).MinHeight(0).Padding(0, 0, 12)
@@ -381,9 +391,9 @@ func (a *App) queuePanel(c *ui.Context) {
 		case remove >= 0:
 			pl.remove(remove)
 			*chosen = -1
-		case list.Submitted() && *chosen >= 0:
+		case list.Submitted() && *chosen >= 0 && !rows.header(*chosen):
 			pl.failures = 0
-			pl.playIndex(start + *chosen)
+			pl.playIndex(rows.at(*chosen))
 			*chosen = -1
 		}
 	})
@@ -398,6 +408,7 @@ func (a *App) clearUpcoming() {
 		return
 	}
 	cleared := slices.Clone(pl.queue[pl.index+1:])
+	added, playNexts := pl.added, pl.playNexts
 	pl.clearUpcoming()
 	if len(pl.queue) > pl.index+1 {
 		return // a device plays, whose queue is its own
@@ -408,18 +419,55 @@ func (a *App) clearUpcoming() {
 		Action:  "Undo",
 		Timeout: 8 * time.Second,
 		OnAction: func() {
-			// The songs go back after the song playing, before any added
-			// since; once another song plays they would not belong.
+			// The songs go back as they were, those added still added;
+			// once another song plays they would not belong.
 			if pl.current() != cur {
 				a.toast("Another song plays now: the queue stays as it is")
 				return
 			}
-			pl.playNext(cleared)
+			pl.playNext(cleared[:playNexts])
+			pl.enqueue(cleared[playNexts:added])
+			pl.extend(cleared[added:])
 		},
 	})
 	if a.win != nil {
 		a.win.Invalidate()
 	}
+}
+
+// queueRows are the rows of the songs after the one playing, in the
+// queue's panel: with songs added, a heading over them and another over
+// the rest, as Spotify has.
+type queueRows struct {
+	start, added, n int // where the songs start in the queue, how many were added, and how many
+}
+
+func (r queueRows) count() int {
+	switch {
+	case r.added == 0:
+		return r.n
+	case r.n > r.added:
+		return r.n + 2
+	}
+	return r.n + 1
+}
+
+// header reports whether row i is a heading.
+func (r queueRows) header(i int) bool {
+	return r.added > 0 && (i == 0 || i == r.added+1 && r.n > r.added)
+}
+
+// at returns the place in the queue of the song of row i, or of the song
+// after it for a heading, and the queue's end for the row past the last.
+func (r queueRows) at(i int) int {
+	above := 0
+	if r.added > 0 && i > 0 {
+		above++
+	}
+	if r.added > 0 && r.n > r.added && i > r.added+1 {
+		above++
+	}
+	return r.start + i - above
 }
 
 // queueRow is a song of the queue; it reports whether its button took it

@@ -72,7 +72,7 @@ func TestClearQueueUndo(t *testing.T) {
 	tt.Frame()
 	wantTexts(t, tt, "Cleared 3 songs from the queue")
 	click(t, tt, "Undo")
-	if got := queueIDs(p); got != "s1 s2 s3 s4" || p.index != 0 {
+	if got := queueIDs(p); got != "s1 s3 s4 s2" || p.index != 0 || p.added != 2 {
 		t.Errorf("after Undo: %s at %d", got, p.index)
 	}
 	// Once another song plays, the songs cleared stay out.

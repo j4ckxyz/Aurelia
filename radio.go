@@ -92,7 +92,7 @@ func (p *player) similarCheck() {
 				fresh = append(fresh, s)
 			}
 		}
-		p.enqueue(fresh)
+		p.extend(fresh)
 	})
 }
 
