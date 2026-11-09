@@ -176,7 +176,10 @@ type songRow struct {
 	showAlbum bool
 	// hideArtist leaves the artist out, as in an album all by one.
 	hideArtist bool
-	play       func()
+	// hideDownloaded leaves out the mark of a song downloaded, where all
+	// are: a download on its way or failed still shows.
+	hideDownloaded bool
+	play           func()
 	// extra adds items at the top of the row's menu.
 	extra func(m *ui.Menu)
 	// list is the songs of the list the row is at place at of: they are
@@ -266,8 +269,8 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 			ui.Text(c, s.Album).TextColor(p.muted).SingleLine().Grow(2).Basis(0).MinWidth(0)
 		}
 		// Whether it is downloaded, or how far.
-		ui.Box(c).Size(16, 16).Shrink(0).Children(func() {
-			if st, part := a.downloads.state(s.ID); st != dlNone {
+		ui.Box(c).Size(16, 16).Center().Shrink(0).Children(func() {
+			if st, part := a.downloads.state(s.ID); st != dlNone && !(st == dlDone && r.hideDownloaded) {
 				a.downloadMark(c, st, part, 16)
 			}
 		})

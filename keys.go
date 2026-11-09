@@ -101,7 +101,7 @@ func init() {
 					a.goTo("/lyrics")
 				}
 			}},
-		{id: "record", group: "Getting around", label: "The record and the lyrics, in place of the app", keys: []chord{{0, ui.KeyV}}, menu: "View",
+		{id: "record", group: "Getting around", label: "Now Playing: the record and the lyrics, in place of the app", keys: []chord{{0, ui.KeyV}}, menu: "View",
 			run: func(a *App) {
 				if a.stage.on && !a.stage.mini {
 					a.closeStage()

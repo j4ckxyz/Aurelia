@@ -143,42 +143,31 @@ func (p *player) sleepText(now time.Time) string {
 	return ""
 }
 
-// sleepButton is the moon of the player's bar, which asks for the music to
-// stop.
-func (a *App) sleepButton(c *ui.Context) {
+// sleepMenu is the sleep timer's menu, in the player bar's "…": what it
+// is set to, and when the music is to stop.
+func (a *App) sleepMenu(m *ui.Menu) {
 	p := a.player
-	text := p.sleepText(time.Now())
-	label := "Sleep timer"
-	if text != "" {
-		label = text
-		if p.sleep.mode == sleepTime {
-			c.After(10 * time.Second) // the time left, kept near
-		}
-	}
-	b := a.toggleIcon(c, "moon", label, p.sleep.mode != "", 32, 16)
-	b.Menu(func(m *ui.Menu) {
-		if text != "" {
-			m.Item(text).Disabled(true)
-			if m.Item("Turn off").Chosen() {
-				p.setSleep("", 0)
-				a.toast("Sleep timer off")
-			}
-			m.Separator()
-		}
-		for _, d := range sleepChoices {
-			if m.Item("In " + sleepWords(d)).Chosen() {
-				p.setSleep(sleepTime, d)
-				a.toast("The music stops in " + sleepWords(d))
-			}
+	if text := p.sleepText(time.Now()); text != "" {
+		m.Item(text).Disabled(true)
+		if m.Item("Turn Off").Chosen() {
+			p.setSleep("", 0)
+			a.toast("Sleep timer off")
 		}
 		m.Separator()
-		if m.Item("At the end of the song").Chosen() {
-			p.setSleep(sleepSong, 0)
-			a.toast("The music stops at the end of the song")
+	}
+	for _, d := range sleepChoices {
+		if m.Item("In " + sleepWords(d)).Chosen() {
+			p.setSleep(sleepTime, d)
+			a.toast("The music stops in " + sleepWords(d))
 		}
-		if m.Item("At the end of the album").Chosen() {
-			p.setSleep(sleepAlbum, 0)
-			a.toast("The music stops at the end of the album")
-		}
-	})
+	}
+	m.Separator()
+	if m.Item("At the End of the Song").Chosen() {
+		p.setSleep(sleepSong, 0)
+		a.toast("The music stops at the end of the song")
+	}
+	if m.Item("At the End of the Album").Chosen() {
+		p.setSleep(sleepAlbum, 0)
+		a.toast("The music stops at the end of the album")
+	}
 }

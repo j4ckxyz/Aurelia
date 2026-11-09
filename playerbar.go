@@ -44,7 +44,11 @@ func (a *App) playerBar(c *ui.Context) {
 			if song == nil {
 				return
 			}
-			pic := a.art(c, song.ImageItem, song.ImageTag, thumbArt, "music", nil).Size(50, 50).Radius(max(p.radius-2, 3)).Cursor(ui.CursorPointer)
+			art := float32(50)
+			if tight {
+				art = 44
+			}
+			pic := a.art(c, song.ImageItem, song.ImageTag, thumbArt, "music", nil).Size(art, art).Radius(max(p.radius-2, 3)).Shrink(0).Cursor(ui.CursorPointer)
 			if pic.Clicked() && song.AlbumID != "" {
 				a.goTo("/album/" + song.AlbumID)
 			}
@@ -76,12 +80,16 @@ func (a *App) playerBar(c *ui.Context) {
 			}
 		})
 
-		// The buttons, over the place in the song.
-		center := float32(260)
+		// The buttons, over the place in the song. In a narrow window
+		// they and the buttons at the right take only their room, and
+		// the song's title has the rest.
+		middle := ui.Column(c).Gap(2).AlignItems(ui.Stretch)
 		if tight {
-			center = 200
+			middle.Width(184).Shrink(0)
+		} else {
+			middle.Grow(1.4).Basis(0).MinWidth(260).MaxWidth(680)
 		}
-		ui.Column(c).Grow(1.4).Basis(0).MinWidth(center).MaxWidth(680).Gap(2).AlignItems(ui.Stretch).Children(func() {
+		middle.Children(func() {
 			ui.Row(c).Justify(ui.Center).Gap(8).Children(func() {
 				if !tight && a.toggleIcon(c, "shuffle", "Shuffle", a.settings.Shuffle, 32, 16).Clicked() {
 					pl.setShuffle(!a.settings.Shuffle)
@@ -107,34 +115,68 @@ func (a *App) playerBar(c *ui.Context) {
 			a.seekBar(c, song, st)
 		})
 
-		// The queue, the lyrics and the volume.
-		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Justify(ui.End).Gap(4).Children(func() {
-			if !tight {
-				a.deviceButton(c)
-			}
-			if a.iconButton(c, "disc-3", "The record and the lyrics", 32, 16).Disabled(song == nil).Clicked() {
+		// Now Playing, the queue, the rest under "…", and the volume.
+		right := ui.Row(c).Justify(ui.End).Gap(4)
+		if tight {
+			right.Shrink(0)
+		} else {
+			right.Grow(1).Basis(0).MinWidth(0)
+		}
+		right.Children(func() {
+			if a.iconButton(c, "square-play", "Now Playing", 32, 16).Disabled(song == nil).Clicked() {
 				a.openStage()
-			}
-			lyrics := a.router.Path() == "/lyrics"
-			if !tight && a.toggleIcon(c, "mic-vocal", "Lyrics", lyrics, 32, 16).Clicked() {
-				if lyrics {
-					a.router.Back()
-				} else {
-					a.goTo("/lyrics")
-				}
 			}
 			// The queue shows beside the page, where there is room for both.
 			if width >= queueMinW && a.toggleIcon(c, "list-end", "Queue", a.settings.QueueOpen, 32, 16).Clicked() {
 				a.settings.QueueOpen = !a.settings.QueueOpen
 				a.saveSettings()
 			}
-			if roomy || a.player.sleep.mode != "" {
-				a.sleepButton(c)
-			}
+			a.playerMore(c, tight)
 			a.volume(c, roomy)
 		})
 	})
 }
+
+// playerMore is the "…" of the player's bar: the sleep timer and where
+// the music plays, and in a narrow window shuffle and repeat, which have
+// no room of their own there. While the timer is set the button is the
+// moon, in the accent, and says when the music stops.
+func (a *App) playerMore(c *ui.Context, tight bool) {
+	pl := a.player
+	sleep := pl.sleepText(time.Now())
+	glyph, tip := "ellipsis", "More"
+	if sleep != "" {
+		glyph, tip = "moon", sleep
+		if pl.sleep.mode == sleepTime {
+			c.After(10 * time.Second) // the time left, kept near
+		}
+	}
+	b := a.toggleIcon(c.Key("player-more"), glyph, playerMoreLabel, sleep != "", 32, 16).Tooltip(tip)
+	if b.Hovered() {
+		a.refreshDevices() // ready by the click
+	}
+	b.Menu(func(m *ui.Menu) {
+		if tight {
+			if m.Item("Shuffle").Checked(a.settings.Shuffle).Chosen() {
+				pl.setShuffle(!a.settings.Shuffle)
+			}
+			m.Submenu("Repeat", func(m *ui.Menu) {
+				for mode, label := range []string{repeatOff: "Off", repeatAll: "All", repeatOne: "One"} {
+					if m.Item(label).Checked(a.settings.Repeat == mode).Chosen() {
+						pl.setRepeat(mode)
+					}
+				}
+			})
+			m.Separator()
+		}
+		m.Submenu("Sleep Timer", a.sleepMenu)
+		m.Submenu("Play On", a.deviceMenu)
+	})
+}
+
+// playerMoreLabel names the player bar's "…" for assistive technology,
+// whatever it shows.
+const playerMoreLabel = "More playback options"
 
 // playButton plays and pauses; it turns while a song waits for its
 // download.
@@ -588,7 +630,7 @@ func (a *App) lyricsPage(c *ui.Context) {
 	p := a.pal
 	song := a.player.current()
 	if song == nil {
-		a.emptyState(c, "mic-vocal", "Nothing is playing", "Play a song to see its lyrics.")
+		a.emptyState(c, "text-quote", "Nothing is playing", "Play a song to see its lyrics.")
 		return
 	}
 	lines, known := a.lyricLines(song)
