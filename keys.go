@@ -132,7 +132,11 @@ func init() {
 		{id: "left", group: "On a page", label: "The item to the left", keys: []chord{{0, ui.KeyH}}, run: func(a *App) { a.cursor.step(-1, 0) }},
 		{id: "right", group: "On a page", label: "The item to the right", keys: []chord{{0, ui.KeyL}}, run: func(a *App) { a.cursor.step(1, 0) }},
 		{id: "open", group: "On a page", label: "Open the item, or play the song", keys: []chord{{0, ui.KeyEnter}}, run: func(a *App) { a.cursor.open() }},
-		{id: "leave", group: "On a page", label: "Put the marker away", keys: []chord{{0, ui.KeyEscape}}, run: func(a *App) { a.cursor.hide() }},
+		{id: "leave", group: "On a page", label: "Put the marker away, and let go of the songs chosen", keys: []chord{{0, ui.KeyEscape}},
+			run: func(a *App) {
+				a.cursor.hide()
+				a.chosen.clear()
+			}},
 	}
 }
 
@@ -156,9 +160,10 @@ func (a *App) shortcuts(c *ui.Context, root ui.Element) {
 			case k == chord{0, ui.KeySpace}:
 				pressed = root.Shortcut(k.mods, k.key) || pressed
 			case k == chord{0, ui.KeyEnter}, k == chord{0, ui.KeyEscape}:
-				// Only while the marker shows: they are a dialog's and a
-				// field's otherwise.
-				pressed = a.cursor.shown && (root.Shortcut(k.mods, k.key) || pressed)
+				// Only while the marker shows, or for Escape songs are
+				// chosen: they are a dialog's and a field's otherwise.
+				held := a.cursor.shown || (k.key == ui.KeyEscape && a.chosen.any(a.router.Location()))
+				pressed = held && (root.Shortcut(k.mods, k.key) || pressed)
 			}
 			if pressed {
 				a.do(cmd)

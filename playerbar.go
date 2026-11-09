@@ -315,7 +315,9 @@ func (a *App) volume(c *ui.Context, slider bool) {
 func (a *App) queuePanel(c *ui.Context) {
 	p := a.pal
 	pl := a.player
-	ui.Column(c.Key("queue-panel")).Width(queueW).Shrink(0).Transition(tween(panelIn)).Background(p.sidebar).BorderWidth(0, 0, 0, 1).BorderColor(p.border).Children(func() {
+	panel := ui.Column(c.Key("queue-panel")).Width(queueW).Shrink(0).Transition(tween(panelIn)).Background(p.sidebar).BorderWidth(0, 0, 0, 1).BorderColor(p.border)
+	a.queueTakes(panel) // songs dragged to it
+	panel.Children(func() {
 		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 10, 0, 18).DragWindow().Children(func() {
 			ui.Text(c, "Queue").FontSize(15).FontWeight(700).Grow(1)
 			if len(pl.queue) > 0 && a.textButton(c, "Save").Clicked() {

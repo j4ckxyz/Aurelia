@@ -114,9 +114,9 @@ func (a *App) searchPage(c *ui.Context) {
 		}
 		if len(songs) > 0 {
 			a.section(add, "Songs", nil)
-			for _, sg := range songs {
+			for i, sg := range songs {
 				add(func(c *ui.Context) {
-					a.songRow(c.Key(sg.ID), songRow{song: sg, showAlbum: true, play: func() { a.player.playWithSimilar(sg) }})
+					a.songRow(c.Key(sg.ID), songRow{song: sg, showAlbum: true, play: func() { a.player.playWithSimilar(sg) }, list: songs, at: i})
 				})
 			}
 		}
