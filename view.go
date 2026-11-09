@@ -126,6 +126,7 @@ func (a *App) view(c *ui.Context) {
 	a.shareDialog(c)
 	a.infoDialog(c)
 	a.promptDialog(c)
+	a.pickerDialog(c)
 	a.toastLayer(c, bottom)
 }
 
@@ -461,7 +462,7 @@ func (a *App) sidebar(c *ui.Context) {
 				ui.Text(c, "PLAYLISTS").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(10, 10, 6)
 			}
 			for _, pl := range playlists {
-				a.navItem(c, "", pl.Name, "/playlist/"+pl.ID, "")
+				a.sidebarPlaylist(c, pl)
 			}
 		})
 		ui.Column(c).Padding(8, 10, 10).Gap(1).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
@@ -541,6 +542,11 @@ func (a *App) navItem(c *ui.Context, glyph, label, path, under string) ui.Elemen
 // navItemAs is navItem under a key of its own, for a page the sidebar
 // lists twice.
 func (a *App) navItemAs(c *ui.Context, key, glyph, label, path, under string) ui.Element {
+	return a.navItemNoted(c, key, glyph, label, "", path, under)
+}
+
+// navItemNoted is navItemAs with a note after the label, in quieter text.
+func (a *App) navItemNoted(c *ui.Context, key, glyph, label, note, path, under string) ui.Element {
 	p := a.pal
 	at := a.router.Path()
 	active := at == path || (under != "" && strings.HasPrefix(at, under))
@@ -565,6 +571,9 @@ func (a *App) navItemAs(c *ui.Context, key, glyph, label, path, under string) ui
 			ui.Icon(c, icon(glyph)).Size(17, 17).TextColor(ig)
 		}
 		ui.Text(c, label).TextColor(fg).FontWeight(500).SingleLine().Grow(1).MinWidth(0)
+		if note != "" {
+			ui.Text(c, note).FontSize(11).TextColor(p.faint).SingleLine().Shrink(0)
+		}
 	})
 	if b.Clicked() {
 		if sectionOf(path) == path {
