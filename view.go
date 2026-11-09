@@ -461,7 +461,7 @@ func (a *App) sidebar(c *ui.Context) {
 				ui.Text(c, "PLAYLISTS").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(10, 10, 6)
 			}
 			for _, pl := range playlists {
-				a.navItem(c, "", pl.Name, "/playlist/"+pl.ID, "")
+				a.takeSongs(a.navItem(c, "", pl.Name, "/playlist/"+pl.ID, ""), pl)
 			}
 		})
 		ui.Column(c).Padding(8, 10, 10).Gap(1).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {

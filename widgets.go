@@ -178,6 +178,14 @@ type songRow struct {
 	play       func()
 	// extra adds items at the top of the row's menu.
 	extra func(m *ui.Menu)
+	// list is the songs of the list the row is at place at of: they are
+	// chosen with clicks, and dragged.
+	list []*library.Song
+	at   int
+	// move, when set, lets songs of the list be dragged to another place
+	// in it: those at places from go before the one at place to, the
+	// number of songs for the end.
+	move func(from []int, to int)
 }
 
 func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
@@ -187,8 +195,22 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 	current := cur != nil && cur.ID == s.ID
 	row := ui.Row(c).Height(rowHeight).Padding(0, 12).Gap(12).Radius(p.radius).Margin(0, pagePad-12)
 	hovered := row.Hovered()
-	if hovered {
+	page := ""
+	chosen, dragging := false, false
+	if r.list != nil {
+		page = a.router.Location()
+		chosen = a.chosen.has(page, r.at, s.ID)
+		row.Drag(&songDrag{a: a, page: page, list: r.list, at: r.at})
+		dragging = row.Dragging()
+	}
+	switch {
+	case chosen:
+		row.Background(p.selection)
+	case hovered:
 		row.Background(p.surface)
+	}
+	if dragging {
+		row.Opacity(0.4) // where it was, as it goes with the pointer
 	}
 	titleColor := p.text
 	switch {
@@ -264,7 +286,17 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 		})
 		ui.Text(c, clock(s.Duration())).TextColor(p.muted).FontFeatures("tnum").Width(44).TextAlign(ui.End).Shrink(0)
 	})
+	if r.move != nil {
+		a.dropBetween(row, r)
+	}
 	row.ContextMenu(func(m *ui.Menu) {
+		// On a song chosen with others, the menu is of them all.
+		if r.list != nil {
+			if places := a.chosen.places(page, r.list, r.at); len(places) > 1 {
+				a.songsMenu(m, songsAt(r.list, places))
+				return
+			}
+		}
 		if m.Item("Play").Chosen() && r.play != nil {
 			r.play()
 		}
@@ -276,10 +308,45 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 	if a.cursorItem(row, r.play) {
 		row.Background(p.surface)
 	}
+	if r.list != nil && row.Clicked() {
+		a.chosen.click(page, r.list, r.at, row.ClickModifiers())
+	}
 	if (play || row.DoubleClicked()) && r.play != nil {
 		r.play()
 	}
 	return row
+}
+
+// dropBetween makes a song's row take songs of its list dragged to it:
+// they go before it, or after it under its lower half, where a line
+// shows them going.
+func (a *App) dropBetween(row ui.Element, r songRow) {
+	// to returns where the songs would go, and whether that moves them.
+	to := func(d *songDrag) (int, []int, bool) {
+		at := r.at
+		if _, y, _ := row.PointerPosition(); y > rowHeight/2 {
+			at++
+		}
+		from := d.places()
+		return at, from, d.from(r.list) && !(len(from) == 1 && (at == from[0] || at == from[0]+1))
+	}
+	if d, ok := ui.DragOver[*songDrag](row); ok {
+		if at, _, moves := to(d); moves {
+			below, accent := at > r.at, a.pal.accent
+			row.DrawOver(func(g *ui.Painter, b ui.Rect) {
+				y := b.Y
+				if below {
+					y += b.H
+				}
+				g.Fill(ui.Rect{X: b.X, Y: y - 1, W: b.W, H: 2}, accent, 1)
+			})
+		}
+	}
+	if d, ok := ui.Drop[*songDrag](row); ok {
+		if at, from, moves := to(d); moves {
+			r.move(from, at)
+		}
+	}
 }
 
 // listHeader heads the columns of a list of songs.

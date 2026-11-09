@@ -27,6 +27,7 @@ type pageStates struct {
 	albumList, artistsList, songList, queueList ui.ListState
 	genreList, facetList                        ui.ListState
 	queueChosen                                 int
+	reordered                                   int                        // songs of a playlist moved here, which its rows show
 	fetched                                     map[string][]*library.Song // songs asked of the server, by album or playlist
 	fetching                                    map[string]bool
 	fetchErr                                    map[string]string
@@ -357,7 +358,7 @@ func (a *App) songsPage(c *ui.Context) {
 		case 1:
 			a.listHeader(c, "", true)
 		default:
-			a.songRow(c.Key(songs[i-2].ID), songRow{song: songs[i-2], showAlbum: true, play: func() { a.player.play(songs, i-2) }})
+			a.songRow(c.Key(songs[i-2].ID), songRow{song: songs[i-2], showAlbum: true, play: func() { a.player.play(songs, i-2) }, list: songs, at: i - 2})
 		}
 	}).Grow(1).MinHeight(0).Padding(0, 0, 28)
 }
@@ -627,7 +628,7 @@ func (a *App) albumPage(c *ui.Context, r *ui.Route) {
 			add(func(c *ui.Context) {
 				// The album's artist is named once, above: a song names
 				// its own only when they differ.
-				a.songRow(c.Key(s.ID), songRow{song: s, number: number, hideArtist: s.Artist == al.Artist, play: func() { a.player.play(songs, i) }})
+				a.songRow(c.Key(s.ID), songRow{song: s, number: number, hideArtist: s.Artist == al.Artist, play: func() { a.player.play(songs, i) }, list: songs, at: i})
 			})
 		}
 		// More by the artist.
@@ -707,7 +708,7 @@ func (a *App) artistPage(c *ui.Context, r *ui.Route) {
 			a.section(add, "Most played", nil)
 			for i, s := range top {
 				add(func(c *ui.Context) {
-					a.songRow(c.Key("top-"+s.ID), songRow{song: s, showAlbum: true, hideArtist: true, play: func() { a.player.play(top, i) }})
+					a.songRow(c.Key("top-"+s.ID), songRow{song: s, showAlbum: true, hideArtist: true, play: func() { a.player.play(top, i) }, list: top, at: i})
 				})
 			}
 		}
@@ -903,6 +904,7 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 	key := "playlist:" + id
 	a.fetchPlaylist(id, nil)
 	fetched, done := a.pages.fetched[key]
+	fromServer := done // the server's, whose songs move
 	if saved := a.downloads.playlists[id]; saved != nil && !done && (a.offline || a.pages.fetchErr[key] != "") {
 		// The server is away: the playlist as it was downloaded.
 		for _, sid := range saved.Songs {
@@ -921,7 +923,7 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 			songs[i] = own
 		}
 	}
-	rows := a.rows(c, "/playlist/"+id, fmt.Sprint(done, len(songs), a.pages.fetchErr[key]), func(add func(func(c *ui.Context))) {
+	rows := a.rows(c, "/playlist/"+id, fmt.Sprint(done, len(songs), a.pages.fetchErr[key], a.pages.reordered), func(add func(func(c *ui.Context))) {
 		add(func(c *ui.Context) {
 			h := hero{
 				kind: "Playlist", title: pl.Name, id: pl.ID, tag: pl.ImageTag, glyph: "list-music",
@@ -987,7 +989,11 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 			add(func(c *ui.Context) { a.listHeader(c, "", true) })
 			for i, s := range songs {
 				add(func(c *ui.Context) {
-					row := songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }}
+					row := songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }, list: songs, at: i}
+					if !pl.Others && fromServer {
+						// The songs drag to another place.
+						row.move = func(from []int, to int) { a.movePlaylistSongs(pl, fetched, from, to) }
+					}
 					if !pl.Others && fetched[i].Entry != "" {
 						entry := fetched[i]
 						row.extra = func(m *ui.Menu) {
@@ -1056,7 +1062,7 @@ func (a *App) favoritesPage(c *ui.Context) {
 			add(func(c *ui.Context) { a.listHeader(c, "", true) })
 			for i, s := range songs {
 				add(func(c *ui.Context) {
-					a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }})
+					a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }, list: songs, at: i})
 				})
 			}
 		}
@@ -1135,7 +1141,7 @@ func (a *App) downloadsPage(c *ui.Context) {
 		add(func(c *ui.Context) { a.listHeader(c, "", true) })
 		for i, s := range songs {
 			add(func(c *ui.Context) {
-				a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }})
+				a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }, list: songs, at: i})
 			})
 		}
 	})

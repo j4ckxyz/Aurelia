@@ -121,6 +121,8 @@ type App struct {
 	remote remote
 	// cursor is the marker the keys move over a page's items.
 	cursor cursor
+	// chosen is the songs chosen in the list of a page.
+	chosen choice
 	// lastIn is the page each section of the sidebar was left at.
 	lastIn map[string]string
 

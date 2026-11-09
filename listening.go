@@ -83,7 +83,7 @@ func (a *App) listeningPage(c *ui.Context) {
 		for i, s := range songs {
 			add(func(c *ui.Context) {
 				a.songRow(c.Key("most-"+s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) },
-					number: i + 1})
+					number: i + 1, list: songs, at: i})
 			})
 		}
 		a.section(add, "Albums", nil)
