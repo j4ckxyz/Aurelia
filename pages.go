@@ -1102,7 +1102,11 @@ func (a *App) downloadsPage(c *ui.Context) {
 					a.player.playShuffled(here)
 				}
 				if a.pillButton(c, "trash", "Remove all", false).Clicked() {
-					d.removeAll()
+					a.ask(promptState{
+						title: "Remove all downloads?", text: "Every downloaded song is deleted from this computer. They stay on the server, to stream or download again.",
+						confirm: "Remove All", danger: true,
+						run: func(string) { d.removeAll() },
+					})
 				}
 			})
 		})

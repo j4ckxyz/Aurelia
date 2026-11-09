@@ -15,6 +15,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"aurelia/internal/audio"
 	"aurelia/internal/jellyfin"
 	"aurelia/internal/library"
 	"aurelia/internal/theme"
@@ -221,8 +222,12 @@ func TestQueue(t *testing.T) {
 	}
 	// Songs of the queue move to another place, and the one playing
 	// stays the one playing.
-	p.setShuffle(false)
+	// Playing plays in order, and turns shuffling off: only Shuffle shuffles.
+	p.setShuffle(true)
 	p.play([]*library.Song{a.lib.Song("s1"), a.lib.Song("s2"), a.lib.Song("s3"), a.lib.Song("s4")}, 1)
+	if got := queueIDs(p); got != "s1 s2 s3 s4" || p.index != 1 || a.settings.Shuffle {
+		t.Errorf("played with shuffle on: %s at %d, shuffle %v", got, p.index, a.settings.Shuffle)
+	}
 	p.move([]int{3}, 2)
 	if got := queueIDs(p); got != "s1 s2 s4 s3" || p.current().ID != "s2" {
 		t.Errorf("after moving the last up: %s, playing %s", got, p.current().ID)
@@ -870,5 +875,36 @@ func TestNarrowWindow(t *testing.T) {
 	a.settings.SidebarW = 9999
 	if a.sidebarWidth() != sidebarMax {
 		t.Errorf("a width past the most gives %v", a.sidebarWidth())
+	}
+}
+
+// TestPlayOn: a song the engine could not open ahead is played when its
+// turn comes, not given up on, and Play after the music stopped plays on
+// from the song after.
+func TestPlayOn(t *testing.T) {
+	a := testApp(t)
+	p := a.player
+	songs := []*library.Song{a.lib.Song("s1"), a.lib.Song("s2"), a.lib.Song("s3")}
+	p.play(songs, 0)
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s1"})
+	if p.finished || p.current().ID != "s2" {
+		t.Errorf("after s1 ended with s2 to come: playing %s, finished %v", p.current().ID, p.finished)
+	}
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s2"})
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s3"})
+	if !p.finished {
+		t.Fatal("the queue's end does not stop the music")
+	}
+	// Songs added after the end are what Play plays.
+	p.enqueue([]*library.Song{a.lib.Song("s4")})
+	p.toggle()
+	if p.finished || p.current().ID != "s4" {
+		t.Errorf("Play after adding to an ended queue: playing %s, finished %v", p.current().ID, p.finished)
+	}
+	// With nothing after, it starts again from the top.
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s4"})
+	p.toggle()
+	if p.current().ID != "s1" {
+		t.Errorf("Play after the end: playing %s", p.current().ID)
 	}
 }

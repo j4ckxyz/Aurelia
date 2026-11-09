@@ -179,22 +179,40 @@ func (p *player) trackOf(s *library.Song) *audio.Track {
 	}
 }
 
-// play plays songs from the one at start, in their order or shuffled
-// after it.
+// play plays songs in their order from the one at start. Only Shuffle
+// shuffles: playing something in order turns shuffling off.
 func (p *player) play(songs []*library.Song, start int) {
 	if len(songs) == 0 {
 		return
 	}
+	if p.app.settings.Shuffle {
+		p.app.settings.Shuffle = false
+		p.app.saveSettings()
+	}
 	start = max(0, min(start, len(songs)-1))
 	p.unshuffled = slices.Clone(songs)
 	p.queue = slices.Clone(songs)
-	if p.app.settings.Shuffle {
-		p.queue[0], p.queue[start] = p.queue[start], p.queue[0]
-		shuffle(p.queue[1:])
-		start = 0
-	}
 	p.failures = 0
 	p.playIndex(start)
+}
+
+// playWithSimilar plays a song on its own, then songs the server finds
+// like it, rather than whatever else was beside it, as search results.
+func (p *player) playWithSimilar(s *library.Song) {
+	p.similarFor = s.ID // asked for here, so the queue's end does not ask again
+	p.play([]*library.Song{s}, 0)
+	p.app.mixOf("Songs", s.ID, radioSize, func(songs []*library.Song, err error) {
+		if p.current() != s {
+			return // something else plays now
+		}
+		var like []*library.Song
+		for _, o := range songs {
+			if o.ID != s.ID && !slices.Contains(p.queue, o) {
+				like = append(like, o)
+			}
+		}
+		p.enqueue(like)
+	})
 }
 
 // playShuffled plays songs in a random order, whatever the setting.
@@ -310,6 +328,12 @@ func (p *player) onEvent(ev audio.Event) {
 		}
 		p.countPlay()
 		p.reportStopAt(p.current(), p.current().Duration())
+		// A song should follow but the engine had none: it could not open
+		// it ahead. Playing it now skips it, and tells, if it fails again.
+		if next := p.following(); next >= 0 {
+			p.playIndex(next)
+			return
+		}
 		p.finished = true
 		p.sleepEnded()
 	case audio.Failed:
@@ -325,6 +349,7 @@ func (p *player) onEvent(ev audio.Event) {
 			p.playIndex(next)
 		} else {
 			p.engine.Stop()
+			p.reportStop()
 			p.finished = true
 		}
 	}
@@ -361,8 +386,14 @@ func (p *player) toggle() {
 		return
 	}
 	if p.finished {
-		// The queue ended: play it again.
-		p.playIndex(0)
+		// Stopped: play on from the song after, as when songs were added
+		// at the end or the sleep timer stopped the music, or from the top
+		// when the queue ended.
+		next := p.index + 1
+		if next >= len(p.queue) {
+			next = 0
+		}
+		p.playIndex(next)
 		return
 	}
 	if p.cold {

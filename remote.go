@@ -469,11 +469,7 @@ func (a *App) obey(o jellyfin.Order) {
 			case "PlayShuffle":
 				p.playShuffled(songs)
 			default:
-				// In the order given, whatever this computer's setting.
-				shuffled := a.settings.Shuffle
-				a.settings.Shuffle = false
-				p.play(songs, o.StartIndex)
-				a.settings.Shuffle = shuffled
+				p.play(songs, o.StartIndex) // in the order given
 				if o.Position > 0 {
 					p.seek(o.Position)
 				}

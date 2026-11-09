@@ -205,15 +205,25 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 		lead.Children(func() {
 			switch {
 			case hovered:
-				b := ui.ButtonBase(c).Size(32, 32).Radius(16).Label("Play " + s.Name)
+				// On the song playing it pauses and plays on, as starting
+				// it again from the top is not what is meant.
+				glyph, label, nudge := "play-fill", "Play "+s.Name, float32(1)
+				if current && a.player.playing() {
+					glyph, label, nudge = "pause-fill", "Pause "+s.Name, 0
+				}
+				b := ui.ButtonBase(c).Size(32, 32).Radius(16).Label(label)
 				if b.Hovered() {
 					b.Background(p.hover)
 				}
 				b.Children(func() {
-					ui.Icon(c, icon("play-fill")).Size(14, 14).TextColor(p.text).Margin(0, 0, 0, 1)
+					ui.Icon(c, icon(glyph)).Size(14, 14).TextColor(p.text).Margin(0, 0, 0, nudge)
 				})
 				if b.Clicked() {
-					play = true
+					if current && !a.player.finished {
+						a.player.toggle()
+					} else {
+						play = true
+					}
 				}
 			case current:
 				a.playingBars(c, 18)
