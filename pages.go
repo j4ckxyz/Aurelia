@@ -23,6 +23,7 @@ type pageStates struct {
 	songs, titles sorted[*library.Song]
 	rows          map[string]*rowList
 	lists         map[string]*ui.ListState
+	listOrder     []string // the pages of lists, the first seen first
 	// The places of the long lists, which stay as other pages show.
 	albumList, artistsList, songList, queueList ui.ListState
 	genreList, facetList                        ui.ListState
@@ -87,17 +88,24 @@ func (a *App) pageList() *ui.ListState {
 	at := a.router.Location()
 	st := a.pages.lists[at]
 	if st == nil {
-		if len(a.pages.lists) > 32 {
-			clear(a.pages.lists)
-		}
 		if a.pages.lists == nil {
 			a.pages.lists = map[string]*ui.ListState{}
 		}
+		// Past maxLists the page seen first forgets its place, and only
+		// it.
+		if len(a.pages.listOrder) >= maxLists {
+			delete(a.pages.lists, a.pages.listOrder[0])
+			a.pages.listOrder = slices.Delete(a.pages.listOrder, 0, 1)
+		}
 		st = &ui.ListState{}
 		a.pages.lists[at] = st
+		a.pages.listOrder = append(a.pages.listOrder, at)
 	}
 	return st
 }
+
+// maxLists is how many pages keep their place.
+const maxLists = 33
 
 // tileRows adds the rows of a grid of n tiles.
 func tileRows(add func(func(c *ui.Context)), n, cols int, build func(c *ui.Context, i int)) {
@@ -215,10 +223,17 @@ func (a *App) albumsPage(c *ui.Context) {
 	if !slices.Contains(albumSorts, a.settings.AlbumSort) {
 		a.settings.AlbumSort = albumSorts[0]
 	}
-	albums := a.albumsBy(a.settings.AlbumSort)
+	// A page that asks for an order, as Home's "Show all" does, shows in
+	// it without changing the order the user chose.
+	order := a.settings.AlbumSort
+	asked := a.router.Query("sort")
+	if slices.Contains(albumSorts, asked) {
+		order = asked
+	}
+	albums := a.albumsBy(order)
 	cols := a.columns(c)
 	sub := func(al *library.Album) string {
-		if a.settings.AlbumSort == "Year" && al.Year > 0 {
+		if order == "Year" && al.Year > 0 {
 			return fmt.Sprintf("%d · %s", al.Year, al.Artist)
 		}
 		return al.Artist
@@ -229,8 +244,13 @@ func (a *App) albumsPage(c *ui.Context) {
 		defer a.cursor.in(nil, 0)
 		if i == 0 {
 			a.pageTitle(c, "Albums", count(len(albums), "album", "albums"), func() {
-				if a.sortSelect(c, "album-sort", &a.settings.AlbumSort, albumSorts) {
+				if a.sortSelect(c, "album-sort", &order, albumSorts) {
+					// Choosing an order here makes it the user's.
+					a.settings.AlbumSort = order
 					a.saveSettings()
+					if asked != "" {
+						a.router.Replace("/albums")
+					}
 				}
 			})
 			return
@@ -293,6 +313,14 @@ func (a *App) songsBy(order string) []*library.Song {
 	for i := range a.lib.Songs {
 		list[i] = &a.lib.Songs[i]
 	}
+	list = orderSongs(list, order)
+	s.key, s.list = key, list
+	return list
+}
+
+// orderSongs puts songs in an order of songSorts, in place, and returns
+// them: fewer for the orders that leave some out.
+func orderSongs(list []*library.Song, order string) []*library.Song {
 	byTitle := func(x, y *library.Song) int { return cmp.Compare(x.SortKey, y.SortKey) }
 	inAlbum := func(x, y *library.Song) int {
 		return cmp.Or(cmp.Compare(x.AlbumKey, y.AlbumKey), cmp.Compare(x.Disc, y.Disc), cmp.Compare(x.Track, y.Track))
@@ -323,7 +351,6 @@ func (a *App) songsBy(order string) []*library.Song {
 	default:
 		slices.SortStableFunc(list, byTitle)
 	}
-	s.key, s.list = key, list
 	return list
 }
 
@@ -1011,12 +1038,19 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 	a.list(c, rows)
 }
 
+// favoriteSorts are the orders of the songs of Favorites. The server
+// does not tell when a song was liked, so there is no order of that.
+var favoriteSorts = []string{"Title", "Artist", "Album", "Recently Added"}
+
 // favoritesPage shows what the user marked: artists, albums and songs.
 func (a *App) favoritesPage(c *ui.Context) {
 	var artists []*library.Artist
 	var albums []*library.Album
 	var songs []*library.Song
-	rows := a.rows(c, "/favorites", "", func(add func(func(c *ui.Context))) {
+	if !slices.Contains(favoriteSorts, a.settings.FavoriteSort) {
+		a.settings.FavoriteSort = favoriteSorts[0]
+	}
+	rows := a.rows(c, "/favorites", a.settings.FavoriteSort, func(add func(func(c *ui.Context))) {
 		for i := range a.lib.Artists {
 			if a.lib.Artists[i].Favorite {
 				artists = append(artists, &a.lib.Artists[i])
@@ -1032,12 +1066,16 @@ func (a *App) favoritesPage(c *ui.Context) {
 				songs = append(songs, s)
 			}
 		}
+		songs = orderSongs(songs, a.settings.FavoriteSort)
 		if len(artists)+len(albums)+len(songs) == 0 {
 			return
 		}
 		cols := a.columns(c)
 		add(func(c *ui.Context) {
 			a.pageTitle(c, "Favorites", "", func() {
+				if len(songs) > 0 && a.pillButton(c, "play-fill", "Play songs", true).Clicked() {
+					a.player.play(songs, 0)
+				}
 				if len(songs) > 0 && a.pillButton(c, "shuffle", "Shuffle songs", false).Clicked() {
 					a.player.playShuffled(songs)
 				}
@@ -1052,7 +1090,11 @@ func (a *App) favoritesPage(c *ui.Context) {
 			tileRows(add, len(albums), cols, func(c *ui.Context, i int) { a.albumTile(c, albums[i], "") })
 		}
 		if len(songs) > 0 {
-			a.section(add, "Songs", nil)
+			a.section(add, "Songs", func(c *ui.Context) {
+				if a.sortSelect(c, "favorite-sort", &a.settings.FavoriteSort, favoriteSorts) {
+					a.saveSettings()
+				}
+			})
 			add(func(c *ui.Context) { a.listHeader(c, "", true) })
 			for i, s := range songs {
 				add(func(c *ui.Context) {

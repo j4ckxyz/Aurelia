@@ -559,6 +559,16 @@ func (a *App) setFavorite(id string, fav *bool, on bool) {
 	}
 	*fav = on
 	a.favGen++
+	// One toast tells what the heart did, which the next press, or the
+	// server saying no, changes.
+	said := "Removed from Favorites"
+	if on {
+		said = "Added to Favorites"
+	}
+	toasts = append(toasts, ui.Toast{ID: "favorite", Title: said})
+	if a.win != nil {
+		a.win.Invalidate()
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -566,7 +576,7 @@ func (a *App) setFavorite(id string, fav *bool, on bool) {
 			a.update(func() {
 				*fav = !on
 				a.favGen++
-				a.toastError("Could not change the favorite", err)
+				toasts = append(toasts, ui.Toast{ID: "favorite", Title: "Could not change the favorite", Description: friendly(err), Type: "error", Timeout: 6 * time.Second})
 			})
 		}
 	}()

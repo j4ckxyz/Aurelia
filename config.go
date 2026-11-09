@@ -51,6 +51,9 @@ type Settings struct {
 	SongSort   string `json:"songSort,omitempty"`
 	ArtistSort string `json:"artistSort,omitempty"`
 	QueueOpen  bool   `json:"queueOpen,omitempty"`
+	// FavoriteSort orders the songs of Favorites: the server does not
+	// tell when a song was liked, so the order is the user's to choose.
+	FavoriteSort string `json:"favoriteSort,omitempty"`
 	// HiddenRecent is the albums taken out of "Jump back in", with when:
 	// one played since shows again.
 	HiddenRecent map[string]int64 `json:"hiddenRecent,omitempty"`

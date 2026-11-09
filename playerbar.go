@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -322,7 +323,7 @@ func (a *App) queuePanel(c *ui.Context) {
 			}
 			if len(pl.queue) > pl.index+1 && pl.index >= 0 {
 				if a.textButton(c, "Clear").Clicked() {
-					pl.clearUpcoming()
+					a.clearUpcoming()
 				}
 			}
 			if a.iconButton(c, "x", "Close the queue", 30, 16).Clicked() {
@@ -378,6 +379,39 @@ func (a *App) queuePanel(c *ui.Context) {
 			*chosen = -1
 		}
 	})
+}
+
+// clearUpcoming empties the queue after the song playing, as the queue's
+// Clear does, and offers the songs back for a while.
+func (a *App) clearUpcoming() {
+	pl := a.player
+	cur := pl.current()
+	if cur == nil || pl.index+1 >= len(pl.queue) {
+		return
+	}
+	cleared := slices.Clone(pl.queue[pl.index+1:])
+	pl.clearUpcoming()
+	if len(pl.queue) > pl.index+1 {
+		return // a device plays, whose queue is its own
+	}
+	toasts = append(toasts, ui.Toast{
+		ID:      "queue-cleared",
+		Title:   "Cleared " + count(len(cleared), "song", "songs") + " from the queue",
+		Action:  "Undo",
+		Timeout: 8 * time.Second,
+		OnAction: func() {
+			// The songs go back after the song playing, before any added
+			// since; once another song plays they would not belong.
+			if pl.current() != cur {
+				a.toast("Another song plays now: the queue stays as it is")
+				return
+			}
+			pl.playNext(cleared)
+		},
+	})
+	if a.win != nil {
+		a.win.Invalidate()
+	}
 }
 
 // queueRow is a song of the queue; it reports whether its button took it
