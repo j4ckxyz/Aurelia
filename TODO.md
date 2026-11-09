@@ -36,8 +36,8 @@ app, so each stays here until it is.
       the device to play on), volume.
 - [ ] A small window keeps the album's buttons on one line, the song's
       name whole, and Shuffle in reach.
-- [ ] Sea glass themes by default, the lavender kept as Lavender. The
-      app's icon is still purple: to decide.
+- [ ] Sea glass themes by default, and the app's icon in sea glass; the
+      lavender kept as Lavender.
 
 ### Playing like Spotify
 
