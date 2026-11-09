@@ -128,7 +128,17 @@ func init() {
 			run: func(a *App) { a.sync() }},
 
 		{id: "down", group: "On a page", label: "The next item, or the one below", keys: []chord{{0, ui.KeyJ}, {0, ui.KeyDown}}, run: func(a *App) { a.cursor.step(0, 1) }},
-		{id: "up", group: "On a page", label: "The item before, or the one above", keys: []chord{{0, ui.KeyK}, {0, ui.KeyUp}}, run: func(a *App) { a.cursor.step(0, -1) }},
+		{id: "up", group: "On a page", label: "The item before, or the one above", keys: []chord{{0, ui.KeyK}, {0, ui.KeyUp}},
+			run: func(a *App) {
+				if a.router.Path() == "/search" && a.cursor.atTop() {
+					// Up from the top of what a search found goes back to
+					// the field, as Down there came to it.
+					a.cursor.hide()
+					a.search.focus = true
+					return
+				}
+				a.cursor.step(0, -1)
+			}},
 		{id: "left", group: "On a page", label: "The item to the left", keys: []chord{{0, ui.KeyH}, {0, ui.KeyLeft}}, run: func(a *App) { a.cursor.step(-1, 0) }},
 		{id: "right", group: "On a page", label: "The item to the right", keys: []chord{{0, ui.KeyL}, {0, ui.KeyRight}}, run: func(a *App) { a.cursor.step(1, 0) }},
 		{id: "open", group: "On a page", label: "Open the item, or play the song", keys: []chord{{0, ui.KeyEnter}}, run: func(a *App) { a.cursor.open() }},
@@ -433,6 +443,26 @@ func (cu *cursor) index() int {
 		}
 	}
 	return -1
+}
+
+// atTop reports whether the marker is on an item with none above it:
+// in the first row of the page that has items, on the first line of its
+// place in that row.
+func (cu *cursor) atTop() bool {
+	i := cu.index()
+	if !cu.shown || i < 0 {
+		return false
+	}
+	it := cu.last[i]
+	if lo, _ := it.list.Visible(); lo > 0 {
+		return false // rows above it are scrolled away, and not built
+	}
+	for _, o := range cu.last[:i] {
+		if o.row < it.row || (o.row == it.row && o.col == it.col && o.line < it.line) {
+			return false
+		}
+	}
+	return true
 }
 
 func (cu *cursor) open() {

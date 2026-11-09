@@ -41,14 +41,60 @@ func (s *searchState) follow(a *App) {
 	}
 }
 
+// searchGlyph is the magnifying glass of the field, MyGo's own: MingCute's
+// search icon (Apache License 2.0,
+// https://github.com/Richard9394/MingCute/blob/main/LICENSE).
+var searchGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" d="M14.5 14.5L20 20m-4-10a6 6 0 1 1-12 0a6 6 0 0 1 12 0Z"/></svg>`))
+
 // field builds the search field, which searches as its text changes.
+//
+// It is MyGo's SearchField built from its parts, drawn as that is: a
+// SearchField focuses only its frame, so the shortcuts that go to search
+// could not put the keyboard in its text. Here the text input is at hand.
 func (s *searchState) field(a *App, c *ui.Context) {
-	f := ui.SearchField(c.Key("search"), &s.query).Grow(1).Basis(0).MinWidth(110).MaxWidth(320).Radius(17).Label("Search").Placeholder("Search artists, albums and songs")
-	if s.focus {
-		f.Focus()
+	t := a.pal.widgets
+	var in ui.Element
+	cleared := false
+	f := ui.Row(c.Key("search")).AlignItems(ui.Center).Gap(t.Space(1.5)).Padding(t.Space(1.5), t.Space(2)).
+		Radius(17).Background(t.Surface).Role(ui.RoleNone).Cursor(ui.CursorText).
+		Grow(1).Basis(0).MinWidth(110).MaxWidth(320)
+	f.Children(func() {
+		ui.Icon(c, searchGlyph).Size(t.Space(3.75), t.Space(3.75)).Shrink(0).TextColor(t.TextMuted)
+		in = ui.TextInputBase(c, &s.query).Grow(1).MinWidth(t.Space(15)).Placeholder("Search").Label("Search")
+		if s.query == "" {
+			return
+		}
+		// The button clearing the text, as Escape does: not a stop of
+		// Tab, as AppKit's is not.
+		x := ui.Box(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(2)).Shrink(0).Background(t.TextMuted.Alpha(0.5)).
+			Role(ui.RoleButton).Label("Clear")
+		x.Draw(func(p *ui.Painter, r ui.Rect) {
+			k := r.W * 0.3
+			var path ui.Path
+			path.MoveTo(r.X+k, r.Y+k).LineTo(r.X+r.W-k, r.Y+r.H-k).MoveTo(r.X+r.W-k, r.Y+k).LineTo(r.X+k, r.Y+r.H-k)
+			p.StrokePath(&path, 1.5, t.Background)
+		})
+		if x.Clicked() || in.Shortcut(0, ui.KeyEscape) {
+			s.query = ""
+			cleared = true
+			in.Focus()
+		}
+	})
+	// A click anywhere in the field puts the keyboard in its text.
+	if f.Clicked() || s.focus {
+		in.Focus()
 		s.focus = false
 	}
-	if f.Changed() {
+	hovered := f.Hovered()
+	switch {
+	case in.Focused():
+		f.Border(1, t.Accent)
+	case hovered:
+		f.Border(1, t.Border.Mix(t.Text, 0.25))
+	default:
+		f.Border(1, t.Border)
+	}
+	if in.Changed() || cleared {
 		target := "/search?q=" + url.QueryEscape(s.query)
 		if a.router.Path() == "/search" {
 			// One page of the history for a search, not one for each
@@ -65,10 +111,10 @@ func (s *searchState) field(a *App, c *ui.Context) {
 	// Enter plays the best of what was found. Down goes into it, with
 	// the marker on the first item: the arrows and Enter are the page's
 	// then, not the field's.
-	if f.Submitted() {
+	if in.Submitted() {
 		s.play = true
 	}
-	if f.Shortcut(0, ui.KeyDown) {
+	if in.Shortcut(0, ui.KeyDown) {
 		a.cursor.hide()
 		a.cursor.step(0, 1)
 		s.leave = true
