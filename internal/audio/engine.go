@@ -127,6 +127,12 @@ type segment struct {
 	played int64 // given to the device
 	queued int   // in the ring
 	final  bool  // the pump adds no more
+	// into is the track faded into under the end of this one; mixed is
+	// how much of its start, and zone how many of this one's last
+	// frames, the crossfade has given the ring.
+	into  *Track
+	mixed int64
+	zone  int
 }
 
 // source is a track the pump decodes.
@@ -520,6 +526,30 @@ func (e *Engine) State() State {
 	return st
 }
 
+// Heard returns how much of track, the one set with SetNext, has been
+// heard as the crossfade brings it in under the end of the track playing:
+// 0 before the crossfade begins. Played from there, the track goes on
+// without its opening heard twice.
+func (e *Engine) Heard(track *Track) time.Duration {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if track == nil || len(e.segs) == 0 {
+		return 0
+	}
+	head := e.segs[0]
+	if head.into != track {
+		return 0
+	}
+	// The crossfade's frames are the last of the segment: those still in
+	// the ring, or held by the device, are not heard yet.
+	unheard := int64(head.queued) + int64(e.player.BufferedSize()/8)
+	heard := min(head.mixed, int64(head.zone)-unheard)
+	if heard <= 0 {
+		return 0
+	}
+	return time.Duration(float64(heard) / float64(e.rate) * float64(time.Second))
+}
+
 // Close stops the engine.
 func (e *Engine) Close() {
 	e.mu.Lock()
@@ -745,6 +775,9 @@ func (e *Engine) pump() {
 			e.mu.Lock()
 			if e.gen == gen && cur.seg != nil {
 				e.push(out, cur.seg)
+				if nxt != nil && cur.zonePos > 0 {
+					cur.seg.into, cur.seg.mixed, cur.seg.zone = nxt.track, nxt.consumed, cur.zonePos
+				}
 				if eof {
 					cur.eof = true
 					cur.seg.final = true

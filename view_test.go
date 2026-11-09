@@ -15,6 +15,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"aurelia/internal/audio"
 	"aurelia/internal/jellyfin"
 	"aurelia/internal/library"
 	"aurelia/internal/theme"
@@ -167,6 +168,132 @@ func TestSearch(t *testing.T) {
 	wantTexts(t, tt, "Artists", "Beyoncé", "Lemonade", "Formation")
 }
 
+// A search shows the best of what it found first, whatever its kind,
+// with the songs that match best beside it; Enter in the field plays it.
+func TestSearchTopResult(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	p := a.player
+	search := func(q string) {
+		t.Helper()
+		a.router.Push("/search?q=" + q)
+		tt.Frame()
+		click(t, tt, "Search")
+	}
+	// A song's title: the song first, above the artists and albums.
+	search("perfect")
+	wantTexts(t, tt, "Top result", "Song", "Songs")
+	topAt, _ := tt.Find("Top result")
+	if albums, ok := tt.Find("Albums"); ok && albums.Y < topAt.Y {
+		t.Errorf("albums at %v, above the top result at %v", albums.Y, topAt.Y)
+	}
+	tt.Key(0, ui.KeyEnter)
+	if s := p.current(); s == nil || s.ID != "s2" || len(p.queue) != 1 || p.similarFor != "s2" {
+		t.Errorf("Enter on a song: playing %v, queue %s", s, queueIDs(p))
+	}
+	// An artist's name: the artist, whose songs Enter plays in order.
+	search("ed sheeran")
+	wantTexts(t, tt, "Top result", "Artist", "Shape of You", "Perfect", "The A Team")
+	tt.Key(0, ui.KeyEnter)
+	if got := queueIDs(p); got != "s1 s2 s4" || p.index != 0 {
+		t.Errorf("Enter on an artist: %s at %d", got, p.index)
+	}
+	// An album's name: the album, in order.
+	search("lemonade")
+	wantTexts(t, tt, "Top result", "Album")
+	tt.Key(0, ui.KeyEnter)
+	if got := queueIDs(p); got != "s3" {
+		t.Errorf("Enter on an album: %s", got)
+	}
+	// A playlist's, where nothing else matches.
+	search("road")
+	wantTexts(t, tt, "Top result", "Playlist", "Road trip", "2 songs")
+	// A click on the card opens an artist, an album or a playlist.
+	click(t, tt, "Road trip")
+	if a.router.Path() != "/playlist/p1" {
+		t.Errorf("a click on the top result: at %s", a.router.Path())
+	}
+	// A song of the results still plays on its own, then songs like it.
+	search("ed sheeran")
+	box, ok := tt.Find("The A Team")
+	if !ok {
+		t.Fatalf("no song The A Team: %q", tt.Texts())
+	}
+	tt.ClickAt(box.X+4, box.Y+4)
+	tt.ClickAt(box.X+4, box.Y+4)
+	if s := p.current(); s == nil || s.ID != "s4" || len(p.queue) != 1 || p.similarFor != "s4" {
+		t.Errorf("a double click on a song found: playing %v, queue %s", s, queueIDs(p))
+	}
+	// Narrow, the songs go under the top result.
+	tt.SetSize(800, 700)
+	tt.Frame()
+	wantTexts(t, tt, "Top result", "Songs", "The A Team")
+	top, _ := tt.Find("Top result")
+	songs, _ := tt.Find("Songs")
+	if songs.Y <= top.Y+40 {
+		t.Errorf("narrow, the songs at %v are not under the top result at %v", songs.Y, top.Y)
+	}
+}
+
+// Down in the search field takes the keyboard to the results, with the
+// marker on the top result: the arrows and Enter move and choose there.
+func TestSearchKeys(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	p := a.player
+	click(t, tt, "Search")
+	tt.Type("ed")
+	wantTexts(t, tt, "Top result", "Ed Sheeran", "Shape of You")
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	cu := &a.cursor
+	if !cu.shown || cu.line != 0 || cu.col != 0 {
+		t.Fatalf("after Down in the field: the marker shows %v, at line %d, place %d", cu.shown, cu.line, cu.col)
+	}
+	// Letters move the marker now, not type: the field has not the keyboard.
+	tt.TypeKey(0, ui.KeyL, "l")
+	if a.search.query != "ed" || cu.line != 0 || cu.col != 1 {
+		t.Errorf("after L: the field holds %q, the marker at line %d, place %d", a.search.query, cu.line, cu.col)
+	}
+	// Down goes down the songs beside the top result, Up back up them.
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyUp)
+	if cu.line != 1 || cu.col != 1 {
+		t.Errorf("after Down, Down, Up: line %d, place %d", cu.line, cu.col)
+	}
+	tt.Key(0, ui.KeyEnter)
+	if s := p.current(); s == nil || s.ID != "s2" || p.similarFor != "s2" {
+		t.Errorf("Enter on the second song: playing %v", s)
+	}
+	// Left from the songs to the top result, and Enter opens the artist.
+	tt.Key(0, ui.KeyUp)
+	tt.Key(0, ui.KeyLeft)
+	if cu.line != 0 || cu.col != 0 {
+		t.Errorf("after Up and Left: line %d, place %d", cu.line, cu.col)
+	}
+	tt.Key(0, ui.KeyEnter)
+	if a.router.Path() != "/artist/ar1" {
+		t.Errorf("Enter on the top result: at %s", a.router.Path())
+	}
+	// A click in the field takes the keyboard back, and typing there puts
+	// the marker away.
+	click(t, tt, "Back")
+	tt.Key(0, ui.KeyDown)
+	click(t, tt, "Search")
+	tt.Type(" sheeran")
+	if cu.shown || a.search.query != "ed sheeran" {
+		t.Errorf("typing again: the marker shows %v, the field holds %q", cu.shown, a.search.query)
+	}
+	// Away from the marker, the arrows scroll the page as they did.
+	a.router.Push("/albums")
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	if cu.shown {
+		t.Error("Down showed the marker with none shown")
+	}
+}
+
 // Playing fills the queue from the song chosen, and the queue's buttons
 // move through it.
 func TestQueue(t *testing.T) {
@@ -195,16 +322,17 @@ func TestQueue(t *testing.T) {
 		t.Errorf("the queue is %s", got)
 	}
 	click(t, tt, "Queue")
-	wantTexts(t, tt, "NOW PLAYING", "NEXT UP", "The A Team", "Formation")
+	wantTexts(t, tt, "NOW PLAYING", "NEXT IN QUEUE", "The A Team", "Formation")
 	p.remove(2)
 	if got := queueIDs(p); got != "s1 s2 s3" {
 		t.Errorf("after removing: %s", got)
 	}
-	// Shuffle keeps the song playing first, and gives the order back.
+	// Shuffle keeps the songs played and the one playing where they are,
+	// and gives the order back.
 	a.router.Push("/home") // where the player's Shuffle is the only one
 	tt.Frame()
 	click(t, tt, "Shuffle")
-	if !a.settings.Shuffle || p.current().ID != "s2" || p.index != 0 || len(p.queue) != 3 {
+	if !a.settings.Shuffle || p.current().ID != "s2" || p.index != 1 || len(p.queue) != 3 {
 		t.Errorf("shuffled: %s at %d", queueIDs(p), p.index)
 	}
 	click(t, tt, "Shuffle")
@@ -221,8 +349,12 @@ func TestQueue(t *testing.T) {
 	}
 	// Songs of the queue move to another place, and the one playing
 	// stays the one playing.
-	p.setShuffle(false)
+	// Playing plays in order, and turns shuffling off: only Shuffle shuffles.
+	p.setShuffle(true)
 	p.play([]*library.Song{a.lib.Song("s1"), a.lib.Song("s2"), a.lib.Song("s3"), a.lib.Song("s4")}, 1)
+	if got := queueIDs(p); got != "s1 s2 s3 s4" || p.index != 1 || a.settings.Shuffle {
+		t.Errorf("played with shuffle on: %s at %d, shuffle %v", got, p.index, a.settings.Shuffle)
+	}
 	p.move([]int{3}, 2)
 	if got := queueIDs(p); got != "s1 s2 s4 s3" || p.current().ID != "s2" {
 		t.Errorf("after moving the last up: %s, playing %s", got, p.current().ID)
@@ -732,7 +864,7 @@ func TestHomeContinues(t *testing.T) {
 	}
 	wantTexts(t, tt, "Recently added", "Your top artists", "Your playlists")
 	// A queue that came back from the last run: nothing plays yet.
-	a.player.restore(a.lib.AlbumSongs("al1"), 1, 42*time.Second)
+	a.player.restore(a.lib.AlbumSongs("al1"), nil, 1, 0, 0, 42*time.Second)
 	tt.Frame()
 	wantTexts(t, tt, "Jump back in", "Perfect", "Continue · 0:42 of 4:23", "Resume")
 	// And what plays now, with the button to pause it.
@@ -870,5 +1002,36 @@ func TestNarrowWindow(t *testing.T) {
 	a.settings.SidebarW = 9999
 	if a.sidebarWidth() != sidebarMax {
 		t.Errorf("a width past the most gives %v", a.sidebarWidth())
+	}
+}
+
+// TestPlayOn: a song the engine could not open ahead is played when its
+// turn comes, not given up on, and Play after the music stopped plays on
+// from the song after.
+func TestPlayOn(t *testing.T) {
+	a := testApp(t)
+	p := a.player
+	songs := []*library.Song{a.lib.Song("s1"), a.lib.Song("s2"), a.lib.Song("s3")}
+	p.play(songs, 0)
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s1"})
+	if p.finished || p.current().ID != "s2" {
+		t.Errorf("after s1 ended with s2 to come: playing %s, finished %v", p.current().ID, p.finished)
+	}
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s2"})
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s3"})
+	if !p.finished {
+		t.Fatal("the queue's end does not stop the music")
+	}
+	// Songs added after the end are what Play plays.
+	p.enqueue([]*library.Song{a.lib.Song("s4")})
+	p.toggle()
+	if p.finished || p.current().ID != "s4" {
+		t.Errorf("Play after adding to an ended queue: playing %s, finished %v", p.current().ID, p.finished)
+	}
+	// With nothing after, it starts again from the top.
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s4"})
+	p.toggle()
+	if p.current().ID != "s1" {
+		t.Errorf("Play after the end: playing %s", p.current().ID)
 	}
 }

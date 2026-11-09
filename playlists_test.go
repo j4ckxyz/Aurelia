@@ -2,13 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+
+	"aurelia/internal/library"
 )
 
 // playlistServer answers like a Jellyfin server that holds one playlist,
@@ -66,9 +70,9 @@ func TestAddToAPlaylistFromTheMenu(t *testing.T) {
 	ps := &playlistServer{}
 	a := testAppWith(t, ps)
 	tt := ui.NewTester(a.view, 1240, 800)
-	a.router.Push("/album/al1")
+	a.router.Push("/album/al3")
 	tt.Frame()
-	s := a.lib.AlbumSongs("al1")[0]
+	s := a.lib.AlbumSongs("al3")[0]
 	if err := tt.RightClick(s.Name); err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +83,175 @@ func TestAddToAPlaylistFromTheMenu(t *testing.T) {
 	if !strings.Contains(got, "ids="+s.ID) || !strings.Contains(got, "userId=") {
 		t.Errorf("the request was %q", got)
 	}
-	// The playlists are read again after it.
-	ps.waitFor(t, a, "GET /Items")
+	// The playlists are read again after it. The new one the server lists
+	// did not say whose it is: it shows, but is not taken for the user's.
+	wait(t, a, "the playlists read again", func() bool { return a.lib.Playlist("p9") != nil })
+	if o := a.lib.Playlist("p9").Owner(); o != library.OwnerUnknown {
+		t.Errorf("a playlist the server said nothing of is %v", o)
+	}
+	if o := a.lib.Playlist("p1").Owner(); o != library.OwnerSelf {
+		t.Errorf("the user's playlist became %v", o)
+	}
+}
+
+// A song in the playlist already is asked about before it is added again.
+func TestAddingASongTwiceAsks(t *testing.T) {
+	ps := &playlistServer{}
+	a := testAppWith(t, ps)
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.addToPlaylist(a.lib.Playlist("p1"), songsOf(a, "s2"))
+	wait(t, a, "the question", func() bool { return a.prompt.open })
+	tt.Frame()
+	wantTexts(t, tt, "Already added — add anyway?", "“Perfect” is in Road trip already. Add it again?")
+	ps.mu.Lock()
+	for _, l := range ps.seen {
+		if strings.HasPrefix(l, "POST /Playlists/p1/Items") {
+			t.Errorf("added before the answer: %s", l)
+		}
+	}
+	ps.mu.Unlock()
+	click(t, tt, "Add Anyway")
+	if got := ps.waitFor(t, a, "POST /Playlists/p1/Items"); !strings.Contains(got, "ids=s2") {
+		t.Errorf("the request was %q", got)
+	}
+	// Of an album, those in it already are left out, and the rest added
+	// without asking.
+	ps.mu.Lock()
+	ps.seen = nil
+	ps.mu.Unlock()
+	a.addToPlaylist(a.lib.Playlist("p1"), songsOf(a, "s2", "s4"))
+	got := ps.waitFor(t, a, "POST /Playlists/p1/Items")
+	if !strings.Contains(got, "ids=s4") || strings.Contains(got, "s2") {
+		t.Errorf("the request was %q", got)
+	}
+}
+
+// With many playlists, the menu lists some, and a picker finds any.
+func TestPickAPlaylistAmongMany(t *testing.T) {
+	ps := &playlistServer{}
+	a := testAppWith(t, ps)
+	var lists []library.Playlist
+	for i := range 30 {
+		lists = append(lists, library.Playlist{ID: fmt.Sprint("m", i), Name: fmt.Sprintf("Mix %02d", i)})
+	}
+	a.lib.SetPlaylists(lists)
+	a.libGen++
+	a.settings.SidebarHidden = true // which lists them too
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.router.Push("/album/al3")
+	tt.Frame()
+	if err := tt.RightClick("The A Team"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Add to Playlist", "Mix 25"); err == nil {
+		t.Error("the menu lists every playlist")
+	} else if err := tt.ChooseMenuItem("Add to Playlist", "Find a Playlist…"); err != nil {
+		t.Fatalf("%v; the menu: %q", err, tt.Menu())
+	}
+	tt.Frame()
+	wantTexts(t, tt, "Add to Playlist", "Mix 00")
+	a.picker.filter = "mix 2 5"
+	tt.Frame()
+	if tt.HasText("Mix 00") {
+		t.Error("the filter leaves other playlists")
+	}
+	click(t, tt, "Mix 25")
+	if got := ps.waitFor(t, a, "POST /Playlists/m25/Items"); !strings.Contains(got, "ids=s4") {
+		t.Errorf("the request was %q", got)
+	}
+	if a.picker.open {
+		t.Error("the picker is still open")
+	}
+}
+
+func TestFilterPlaylists(t *testing.T) {
+	list := []*library.Playlist{{ID: "a", Name: "Driving Mix"}, {ID: "b", Name: "2000s Mix"}, {ID: "c", Name: "Café"}}
+	for filter, want := range map[string]string{"": "a b c", "mix": "a b", "MIX dri": "a", "cafe": "c", "jazz": ""} {
+		var got []string
+		for _, pl := range filterPlaylists(list, filter) {
+			got = append(got, pl.ID)
+		}
+		if strings.Join(got, " ") != want {
+			t.Errorf("%q finds %q, want %q", filter, got, want)
+		}
+	}
+}
+
+// Playlists that share a name say how they differ, in the sidebar.
+func TestPlaylistsOfOneName(t *testing.T) {
+	a := testApp(t)
+	a.settings.OthersPlaylists = true
+	a.lib.SetPlaylists([]library.Playlist{
+		{ID: "p1", Name: "Road trip", Songs: 2},
+		{ID: "x1", Name: "2000s Mix", Songs: 50},
+		{ID: "x2", Name: "2000s mix", Songs: 48, Others: true},
+	})
+	a.libGen++
+	notes := playlistNotes(a.playlists())
+	if notes["p1"] != "" || notes["x1"] != "50 songs" || notes["x2"] != "48 songs, shared" {
+		t.Errorf("the notes are %q", notes)
+	}
+	tt := ui.NewTester(a.view, 1240, 800)
+	wantTexts(t, tt, "50 songs", "48 songs, shared")
+}
+
+// A playlist's menu, in the sidebar and on its tile, plays it, queues it
+// and changes it; the hover button on its tile plays it.
+func TestPlaylistMenus(t *testing.T) {
+	ps := &playlistServer{}
+	a := testAppWith(t, ps)
+	a.lib.SetPlaylists([]library.Playlist{
+		{ID: "p1", Name: "Road trip", Songs: 2},
+		{ID: "p2", Name: "Not sure", Songs: 1, Unsure: true},
+		{ID: "p3", Name: "Somebody's mix", Songs: 3, Others: true},
+	})
+	a.libGen++
+	a.settings.OthersPlaylists = true
+	tt := ui.NewTester(a.view, 1240, 800)
+	menu := func(name string) []string {
+		t.Helper()
+		if err := tt.RightClick(name); err != nil {
+			t.Fatal(err)
+		}
+		m := tt.Menu()
+		tt.CloseMenu()
+		return m
+	}
+	has := func(m []string, item string) bool { return slices.Contains(m, item) }
+	if m := menu("Road trip"); !has(m, "Play") || !has(m, "Shuffle") || !has(m, "Add to Queue") || !has(m, "Rename…") || !has(m, "Delete Playlist…") || !has(m, "Pin to Sidebar") {
+		t.Errorf("the menu of the user's playlist is %q", m)
+	}
+	if m := menu("Not sure"); !has(m, "Rename…") || has(m, "Delete Playlist…") {
+		t.Errorf("the menu of a playlist of an owner not known is %q", m)
+	}
+	if m := menu("Somebody's mix"); has(m, "Rename…") || has(m, "Delete Playlist…") || !has(m, "Play") {
+		t.Errorf("the menu of another's playlist is %q", m)
+	}
+	if err := tt.RightClick("Road trip"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Add to Queue"); err != nil {
+		t.Fatalf("%v; the menu: %q", err, tt.Menu())
+	}
+	wait(t, a, "the songs queued", func() bool { return len(a.player.queue) == 2 })
+	if a.player.queue[0] != a.lib.Song("s1") {
+		t.Error("the queue does not hold the library's own songs")
+	}
+	// The tile's play button shows under the pointer.
+	a.player.queue = nil
+	a.router.Push("/playlists")
+	tt.Frame()
+	if tt.HasText("Play Road trip") {
+		t.Error("the play button shows without the pointer")
+	}
+	r, ok := tt.Find("2 songs") // the tile's line, under its picture
+	if !ok {
+		t.Fatalf("no tile; texts: %q", tt.Texts())
+	}
+	tt.Move(r.X+r.W/2, r.Y-40)
+	tt.Frame()
+	click(t, tt, "Play Road trip")
+	wait(t, a, "the playlist playing", func() bool { return len(a.player.queue) == 2 })
 }
 
 func TestNewPlaylistFromASong(t *testing.T) {
@@ -165,6 +336,12 @@ func TestDeleteRenameAndRemove(t *testing.T) {
 	if got := ps.waitFor(t, a, "DELETE /Playlists/p1/Items"); !strings.Contains(got, "entryIds=E2") {
 		t.Errorf("the request was %q", got)
 	}
+	// A toast tells of it, and puts the song back.
+	wait(t, a, "the toast", func() bool { tt.Frame(); return tt.HasText("Removed “Perfect” from Road trip") })
+	click(t, tt, "Undo")
+	if got := ps.waitFor(t, a, "POST /Playlists/p1/Items?"); !strings.Contains(got, "ids=s2") {
+		t.Errorf("the request was %q", got)
+	}
 	// Moving: the second of two songs can go up, and not down.
 	a.refreshPlaylists(nil)
 	wait(t, a, "the playlist read again", func() bool { tt.Frame(); return tt.HasText("Perfect") })
@@ -236,5 +413,19 @@ func TestSaveTheQueue(t *testing.T) {
 	got := ps.waitFor(t, a, "POST /Playlists ")
 	if !strings.Contains(got, `"Ids":["s1","s2"]`) {
 		t.Errorf("the request was %q", got)
+	}
+}
+
+// An empty playlist tells where songs are added from.
+func TestEmptyPlaylist(t *testing.T) {
+	a := testAppWith(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Items":[],"TotalRecordCount":0}`))
+	}))
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.router.Push("/playlist/p1")
+	wait(t, a, "the playlist read", func() bool { tt.Frame(); return tt.HasText("This playlist is empty") })
+	wantTexts(t, tt, "choose Add to Playlist")
+	if tt.HasText("Jellyfin") {
+		t.Error("the empty playlist sends the user to Jellyfin")
 	}
 }

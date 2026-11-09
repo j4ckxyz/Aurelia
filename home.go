@@ -92,10 +92,8 @@ func (a *App) homePage(c *ui.Context) {
 			shelf(title, len(list), more, func(c *ui.Context, i int) { a.albumTile(c, list[i], "") })
 		}
 		added := a.albumsBy("Recently Added")
-		albums("Recently added", added, func() {
-			a.settings.AlbumSort = "Recently Added"
-			a.goTo("/albums")
-		})
+		// Shown in that order, which the albums the user sorted keep.
+		albums("Recently added", added, func() { a.goTo("/albums?sort=Recently+Added") })
 		artists := a.topArtists()
 		shelf("Your top artists", len(artists), nil, func(c *ui.Context, i int) { a.artistTile(c, artists[i]) })
 		albums("Most played", most, nil)

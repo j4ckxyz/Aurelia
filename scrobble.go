@@ -33,8 +33,8 @@ const (
 // scrobbler counts how long a song is heard.
 type scrobbler struct {
 	songID  string
+	start   int // the player's count of songs begun, as this one began
 	played  time.Duration
-	pos     time.Duration
 	last    time.Time
 	started bool
 	sent    bool
@@ -46,17 +46,18 @@ func minHeard(dur time.Duration) time.Duration {
 	return min(dur/2, 4*time.Minute)
 }
 
-// step is told, every second, what plays; it says what to tell the server.
-func (sc *scrobbler) step(now time.Time, songID string, dur, pos time.Duration, playing bool) scrobbleAct {
+// step is told, every second, what plays and the player's count of songs
+// begun (player.starts); it says what to tell the server.
+func (sc *scrobbler) step(now time.Time, songID string, start int, dur time.Duration, playing bool) scrobbleAct {
 	if songID == "" {
 		*sc = scrobbler{}
 		return scrobbleNothing
 	}
-	// Another song, or the same one from its start again (repeat).
-	if songID != sc.songID || pos+10*time.Second < sc.pos {
-		*sc = scrobbler{songID: songID, last: now}
+	// Another song, or the same one begun again (repeat, Previous). A seek,
+	// even back to the start, is the same listen going on.
+	if songID != sc.songID || start != sc.start {
+		*sc = scrobbler{songID: songID, start: start, last: now}
 	}
-	sc.pos = pos
 	elapsed := now.Sub(sc.last)
 	sc.last = now
 	if !playing {
@@ -151,7 +152,7 @@ func (a *App) scrobbleTick(now time.Time) {
 	if s != nil && a.player.far == nil {
 		id, dur = s.ID, s.Duration()
 	}
-	switch sb.sc.step(now, id, dur, st.Position, s != nil && !st.Paused && a.player.far == nil) {
+	switch sb.sc.step(now, id, a.player.starts, dur, s != nil && !st.Paused && a.player.far == nil) {
 	case scrobbleStarted:
 		a.sendListen("playing_now", listenOf(s, 0))
 	case scrobbleHeard:

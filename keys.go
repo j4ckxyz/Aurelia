@@ -127,12 +127,16 @@ func init() {
 		{id: "sync", group: "Getting around", label: "Update the library", keys: []chord{{primary | ui.Shift, ui.KeyR}}, menu: "Library",
 			run: func(a *App) { a.sync() }},
 
-		{id: "down", group: "On a page", label: "The next item, or the one below", keys: []chord{{0, ui.KeyJ}}, run: func(a *App) { a.cursor.step(0, 1) }},
-		{id: "up", group: "On a page", label: "The item before, or the one above", keys: []chord{{0, ui.KeyK}}, run: func(a *App) { a.cursor.step(0, -1) }},
-		{id: "left", group: "On a page", label: "The item to the left", keys: []chord{{0, ui.KeyH}}, run: func(a *App) { a.cursor.step(-1, 0) }},
-		{id: "right", group: "On a page", label: "The item to the right", keys: []chord{{0, ui.KeyL}}, run: func(a *App) { a.cursor.step(1, 0) }},
+		{id: "down", group: "On a page", label: "The next item, or the one below", keys: []chord{{0, ui.KeyJ}, {0, ui.KeyDown}}, run: func(a *App) { a.cursor.step(0, 1) }},
+		{id: "up", group: "On a page", label: "The item before, or the one above", keys: []chord{{0, ui.KeyK}, {0, ui.KeyUp}}, run: func(a *App) { a.cursor.step(0, -1) }},
+		{id: "left", group: "On a page", label: "The item to the left", keys: []chord{{0, ui.KeyH}, {0, ui.KeyLeft}}, run: func(a *App) { a.cursor.step(-1, 0) }},
+		{id: "right", group: "On a page", label: "The item to the right", keys: []chord{{0, ui.KeyL}, {0, ui.KeyRight}}, run: func(a *App) { a.cursor.step(1, 0) }},
 		{id: "open", group: "On a page", label: "Open the item, or play the song", keys: []chord{{0, ui.KeyEnter}}, run: func(a *App) { a.cursor.open() }},
-		{id: "leave", group: "On a page", label: "Put the marker away", keys: []chord{{0, ui.KeyEscape}}, run: func(a *App) { a.cursor.hide() }},
+		{id: "leave", group: "On a page", label: "Put the marker away, and let go of the songs chosen", keys: []chord{{0, ui.KeyEscape}},
+			run: func(a *App) {
+				a.cursor.hide()
+				a.chosen.clear()
+			}},
 	}
 }
 
@@ -151,14 +155,20 @@ func (a *App) shortcuts(c *ui.Context, root ui.Element) {
 	for i := range commands {
 		cmd := &commands[i]
 		for _, k := range cmd.keys {
+			if k.mods == 0 && arrow(k.key) && !a.cursor.shown {
+				// The arrows move the marker while it shows; otherwise
+				// they are left to scroll the page.
+				continue
+			}
 			pressed := c.Shortcut(k.mods, k.key)
 			switch {
 			case k == chord{0, ui.KeySpace}:
 				pressed = root.Shortcut(k.mods, k.key) || pressed
 			case k == chord{0, ui.KeyEnter}, k == chord{0, ui.KeyEscape}:
-				// Only while the marker shows: they are a dialog's and a
-				// field's otherwise.
-				pressed = a.cursor.shown && (root.Shortcut(k.mods, k.key) || pressed)
+				// Only while the marker shows, or for Escape songs are
+				// chosen: they are a dialog's and a field's otherwise.
+				held := a.cursor.shown || (k.key == ui.KeyEscape && a.chosen.any(a.router.Location()))
+				pressed = held && (root.Shortcut(k.mods, k.key) || pressed)
 			}
 			if pressed {
 				a.do(cmd)
@@ -166,6 +176,11 @@ func (a *App) shortcuts(c *ui.Context, root ui.Element) {
 			}
 		}
 	}
+}
+
+// arrow reports whether k is one of the arrows.
+func arrow(k ui.Key) bool {
+	return k == ui.KeyUp || k == ui.KeyDown || k == ui.KeyLeft || k == ui.KeyRight
 }
 
 // do runs a command, of a key or of the menu bar.
@@ -237,18 +252,20 @@ func (k chord) caps() []string {
 
 // cursor is the marker the keys move over the items of a page: the
 // albums of a grid, the songs of a list. It is at a row of the page's
-// list and a place in the row.
+// list and a place in the row, and on a line of the row where items
+// stand one under another in it, as the songs beside a search's top
+// result.
 type cursor struct {
-	shown    bool
-	row, col int
-	page     string // the page it is on
-	reveal   bool   // the item is to be scrolled to
+	shown          bool
+	row, line, col int
+	page           string // the page it is on
+	reveal         bool   // the item is to be scrolled to
 	// What the frame being built, and the one before it, showed.
 	items, last []cursorItem
 	// Where the item being built is.
-	list  *ui.ListState
-	at    int
-	place int
+	list      *ui.ListState
+	at, under int
+	place     int
 	// A step waiting for rows that were not built yet.
 	pending [2]int
 	tries   int
@@ -256,9 +273,9 @@ type cursor struct {
 }
 
 type cursorItem struct {
-	row, col int
-	list     *ui.ListState
-	open     func()
+	row, line, col int
+	list           *ui.ListState
+	open           func()
 }
 
 // begin starts a frame at a page.
@@ -276,7 +293,11 @@ func (cu *cursor) begin(page string) {
 }
 
 // in tells that what is built next is row i of a page's list.
-func (cu *cursor) in(list *ui.ListState, i int) { cu.list, cu.at, cu.place = list, i, 0 }
+func (cu *cursor) in(list *ui.ListState, i int) { cu.list, cu.at, cu.under, cu.place = list, i, 0, 0 }
+
+// lineAt tells that the item built next is on a line of its row, under
+// the first, at a place: the items of a column of the row share it.
+func (cu *cursor) lineAt(line, place int) { cu.under, cu.place = line, place }
 
 // item adds an item of the page, and reports whether the marker is on
 // it.
@@ -285,10 +306,10 @@ func (a *App) cursorItem(el ui.Element, open func()) bool {
 	if cu.list == nil {
 		return false // not of the page: the queue's, say
 	}
-	it := cursorItem{row: cu.at, col: cu.place, list: cu.list, open: open}
+	it := cursorItem{row: cu.at, line: cu.under, col: cu.place, list: cu.list, open: open}
 	cu.place++
 	cu.items = append(cu.items, it)
-	on := cu.shown && it.row == cu.row && it.col == cu.col
+	on := cu.shown && cu.on(it)
 	if on {
 		el.Shadow(0, 0, 0, 2, a.pal.accent)
 		if cu.reveal {
@@ -311,13 +332,7 @@ func (cu *cursor) move(dx, dy int) {
 	if len(items) == 0 {
 		return
 	}
-	cur := -1
-	for i, it := range items {
-		if it.row == cu.row && it.col == cu.col {
-			cur = i
-			break
-		}
-	}
+	cur := cu.index()
 	if !cu.shown || cur < 0 {
 		// At the first item in view.
 		first := 0
@@ -338,9 +353,20 @@ func (cu *cursor) move(dx, dy int) {
 		}
 		return
 	}
+	// A line of the same row, below or above, at the same place.
+	target := -1
+	for i := cur + dy; i >= 0 && i < len(items) && items[i].row == cu.row; i += dy {
+		if items[i].col == cu.col && (items[i].line-cu.line)*dy > 0 {
+			target = i
+			break
+		}
+	}
+	if target >= 0 {
+		cu.set(items[target])
+		return
+	}
 	// The row above or below that has items, at the same place or its
 	// last.
-	target := -1
 	if dy > 0 {
 		for i := cur + 1; i < len(items); i++ {
 			if items[i].row == cu.row {
@@ -390,15 +416,28 @@ func (cu *cursor) move(dx, dy int) {
 }
 
 func (cu *cursor) set(it cursorItem) {
-	cu.shown, cu.row, cu.col, cu.reveal, cu.wake = true, it.row, it.col, true, true
+	cu.shown, cu.row, cu.line, cu.col, cu.reveal, cu.wake = true, it.row, it.line, it.col, true, true
+}
+
+// on reports whether the marker's place is the item's.
+func (cu *cursor) on(it cursorItem) bool {
+	return it.row == cu.row && it.line == cu.line && it.col == cu.col
+}
+
+// index returns where the marker is among the items of the last frame,
+// -1 when on none.
+func (cu *cursor) index() int {
+	for i, it := range cu.last {
+		if cu.on(it) {
+			return i
+		}
+	}
+	return -1
 }
 
 func (cu *cursor) open() {
-	for _, it := range cu.last {
-		if cu.shown && it.row == cu.row && it.col == cu.col && it.open != nil {
-			it.open()
-			return
-		}
+	if i := cu.index(); cu.shown && i >= 0 && cu.last[i].open != nil {
+		cu.last[i].open()
 	}
 }
 

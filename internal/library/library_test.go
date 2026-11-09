@@ -2,6 +2,9 @@ package library
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -82,11 +85,84 @@ func TestSearch(t *testing.T) {
 	if r := l.Search("sheeran", Limits{Songs: 1}); len(r.Songs) != 1 || r.Songs[0].ID != "s1" {
 		t.Errorf("limit and plays: %v", r.Songs)
 	}
+	// The best match of all comes first, whatever its kind; an artist
+	// before an album and an album before a song that match as well.
+	for q, want := range map[string]Match{
+		"perfect":    {Song: l.Song("s2")},
+		"ed sheeran": {Artist: l.Artist("ar1")},
+		"divide":     {Album: l.Album("al1")},
+		"shape":      {Song: l.Song("s1")},
+		"mornings":   {Playlist: l.Playlist("p1")},
+	} {
+		if r := l.Search(q, Limits{Songs: 1}); len(r.Best) == 0 || r.Best[0] != want {
+			t.Errorf("%s: the best is %+v", q, r.Best)
+		}
+	}
+	if r := l.Search("perfect", Limits{}); len(r.Best) != 2 || r.Best[1].Playlist == nil {
+		t.Errorf("perfect: the first of each kind %+v", r.Best)
+	}
+	l.Data.Albums = append(l.Data.Albums, Album{ID: "al4", Name: "Perfect", Artist: "Ed Sheeran"})
+	if r := Build(l.Data).Search("perfect", Limits{}); len(r.Best) != 3 || r.Best[0].Album == nil || r.Best[1].Song == nil {
+		t.Errorf("an album and a song both named perfect: %+v", r.Best)
+	}
 	if r := l.Search("  ", Limits{}); !r.Empty() {
 		t.Error("an empty query found something")
 	}
 	if r := l.Search("zzz", Limits{}); !r.Empty() {
 		t.Error("zzz found something")
+	}
+}
+
+// Whose a playlist is: the server's answer, and what "not found" means on
+// a server that shares playlists and on one older.
+func TestPlaylistOwners(t *testing.T) {
+	serve := func(version string) *jellyfin.Client {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/System/Info/Public":
+				if version == "" {
+					http.Error(w, "down", http.StatusBadGateway)
+					return
+				}
+				fmt.Fprintf(w, `{"Id":"srv","ServerName":"Test","Version":%q}`, version)
+			case "/Playlists/mine/Users":
+				w.Write([]byte(`[]`))
+			case "/Playlists/theirs/Users":
+				w.WriteHeader(http.StatusForbidden)
+			case "/Playlists/public/Users":
+				http.Error(w, "Playlist not found", http.StatusNotFound)
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		return jellyfin.New(jellyfin.Session{Server: srv.URL, UserID: "u", Token: "t"})
+	}
+	ids := []string{"mine", "theirs", "public", "broken"}
+	for _, tc := range []struct {
+		version string
+		want    map[string]Owner
+	}{
+		{"10.10.7", map[string]Owner{"mine": OwnerSelf, "theirs": OwnerOther, "public": OwnerOther, "broken": OwnerUnknown}},
+		// Older servers know nothing of the question, and show the user
+		// only their own.
+		{"10.8.13", map[string]Owner{"mine": OwnerSelf, "theirs": OwnerOther, "public": OwnerSelf, "broken": OwnerUnknown}},
+		// A server that does not say what it is: "not found" tells nothing.
+		{"", map[string]Owner{"mine": OwnerSelf, "theirs": OwnerOther, "public": OwnerUnknown, "broken": OwnerUnknown}},
+	} {
+		got := PlaylistOwners(context.Background(), serve(tc.version), ids)
+		for _, id := range ids {
+			if got[id] != tc.want[id] {
+				t.Errorf("of version %q, %s is %v, want %v", tc.version, id, got[id], tc.want[id])
+			}
+		}
+	}
+	// The playlists are made with what was found.
+	it := jellyfin.Item{ID: "p", Name: "Mix", ChildCount: 3}
+	for _, o := range []Owner{OwnerSelf, OwnerOther, OwnerUnknown} {
+		if pl := PlaylistOf(&it, o); pl.Owner() != o || pl.Songs != 3 {
+			t.Errorf("a playlist of %v is %+v", o, pl)
+		}
 	}
 }
 

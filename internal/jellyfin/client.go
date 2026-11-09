@@ -419,20 +419,71 @@ func (c *Client) Playlists(ctx context.Context) ([]Item, error) {
 	return res.Items, err
 }
 
-// PlaylistIsOwn reports whether a playlist is the user's own, and not one
-// that another made public: the server tells who a playlist is shared
-// with to its owner alone. known is false where it tells neither, as a
-// server older than playlists that are shared.
-func (c *Client) PlaylistIsOwn(ctx context.Context, id string) (own, known bool) {
+// PlaylistOwner is what the server answers when asked who a playlist is
+// shared with, which tells whose it is.
+type PlaylistOwner uint8
+
+const (
+	// PlaylistOwnerUnknown: no answer, as the server failed or was not
+	// reached.
+	PlaylistOwnerUnknown PlaylistOwner = iota
+	// PlaylistOwnerSelf: the server told, as it tells the owner alone.
+	PlaylistOwnerSelf
+	// PlaylistOwnerOther: the server refused, as it refuses all but the
+	// owner, the playlist being another's that was made public.
+	PlaylistOwnerOther
+	// PlaylistNotFound: the server answered that there is no such
+	// playlist. A server that shares playlists says so of one that is not
+	// the user's nor shared with them, even if it lists it to them; an
+	// older one says so of every playlist, not knowing the question.
+	PlaylistNotFound
+)
+
+// PlaylistOwner asks the server whose a playlist is.
+func (c *Client) PlaylistOwner(ctx context.Context, id string) PlaylistOwner {
 	err := c.do(ctx, "GET", "/Playlists/"+id+"/Users", nil, nil, nil)
 	var status *StatusError
 	switch {
 	case err == nil:
-		return true, true
+		return PlaylistOwnerSelf
 	case errors.As(err, &status) && status.Code == http.StatusForbidden:
-		return false, true
+		return PlaylistOwnerOther
+	case errors.As(err, &status) && status.Code == http.StatusNotFound:
+		return PlaylistNotFound
 	}
-	return false, false
+	return PlaylistOwnerUnknown
+}
+
+// SharesPlaylists reports whether the server is one that shares
+// playlists, 10.9 or later, and so knows what PlaylistOwner asks.
+func (c *Client) SharesPlaylists(ctx context.Context) (bool, error) {
+	info, err := Probe(ctx, c.Server)
+	if err != nil {
+		return false, err
+	}
+	return AtLeast(info.Version, 10, 9), nil
+}
+
+// AtLeast reports whether a version of the server, as "10.10.7" or
+// "10.11.0-rc2", is major.minor or later.
+func AtLeast(version string, major, minor int) bool {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return false
+	}
+	lead := func(s string) (int, error) { // the digits a part begins with
+		end := 0
+		for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+			end++
+		}
+		return strconv.Atoi(s[:end])
+	}
+	ma, err1 := lead(parts[0])
+	mi, err2 := lead(parts[1])
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return ma > major || ma == major && mi >= minor
 }
 
 // PlaylistItems returns the songs of a playlist, in its order.
