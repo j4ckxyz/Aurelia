@@ -18,18 +18,19 @@ func spec(name, kind string, kv ...string) Spec {
 }
 
 // builtIn are the themes that come with Aurelia. Aurelia's own, which
-// "Match the system" shows, are gold, as the name is, on warm near-black
-// and warm white: the covers bring the other colors.
+// "Match the system" shows, are sea glass, the water of the moon jellyfish
+// the app is named after, on neutral near-black and white: the covers
+// bring the other colors.
 var builtIn = []Spec{
 	spec("Aurelia Dark", "dark",
-		"background", "#121110", "sidebar", "#0c0b0a", "bar", "#151413", "surface", "#1d1b19", "surfaceHover", "#282522",
-		"border", "#2a2724", "text", "#efebe4", "textMuted", "#a39d94", "accent", "#e2b55e", "accentText", "#1a1408",
-		"selection", "#3a3020"),
+		"background", "#0f0f12", "sidebar", "#0a0a0c", "bar", "#131317", "surface", "#1b1b21", "surfaceHover", "#25252d",
+		"border", "#24242b", "text", "#ececf1", "textMuted", "#9a9aa8", "accent", "#7dd3c0", "accentText", "#062019",
+		"selection", "#16302b"),
 	spec("Aurelia Light", "light",
-		"background", "#fdfcfa", "sidebar", "#f6f4ef", "bar", "#faf9f6", "surface", "#f1eee8", "surfaceHover", "#e8e4dc",
-		"border", "#e5e1d8", "text", "#1c1a17", "textMuted", "#68625a", "accent", "#835a00", "accentText", "#ffffff",
-		"selection", "#f2e6c9"),
-	// Lavender and Lavender Light were Aurelia's own before the gold.
+		"background", "#ffffff", "sidebar", "#f6f6f8", "bar", "#fbfbfc", "surface", "#f1f1f4", "surfaceHover", "#e7e7ec",
+		"border", "#e4e4ea", "text", "#17171c", "textMuted", "#6b6b78", "accent", "#0b7468", "accentText", "#ffffff",
+		"selection", "#d4efe9"),
+	// Lavender and Lavender Light were Aurelia's own before the sea glass.
 	spec("Lavender", "dark",
 		"background", "#0f0f12", "sidebar", "#0a0a0c", "bar", "#131317", "surface", "#1b1b21", "surfaceHover", "#25252d",
 		"border", "#24242b", "text", "#ececf1", "textMuted", "#9a9aa8", "accent", "#a48cff", "accentText", "#100e1a",
@@ -93,8 +94,8 @@ var builtIn = []Spec{
 // those were the IDs of the lavender themes, which whoever chose one
 // keeps.
 const (
-	DefaultDark  = "aurelia-gold-dark"
-	DefaultLight = "aurelia-gold-light"
+	DefaultDark  = "aurelia-sea-dark"
+	DefaultLight = "aurelia-sea-light"
 )
 
 // ids are the IDs of the themes built in whose ID is not the slug of
@@ -106,7 +107,7 @@ var moved = map[string]string{"aurelia-dark": "lavender", "aurelia-light": "lave
 
 // Migrate returns the ID that a theme saved as id has now: "aurelia-dark"
 // and "aurelia-light" were the lavender themes, before Aurelia's own
-// turned gold.
+// turned sea glass.
 func Migrate(id string) string {
 	if to, ok := moved[id]; ok {
 		return to

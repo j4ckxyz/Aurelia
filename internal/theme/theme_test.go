@@ -63,7 +63,7 @@ func TestBuiltInThemesAreReadable(t *testing.T) {
 	}
 }
 
-// Aurelia's own themes are gold; the lavender they were stays, for
+// Aurelia's own themes are sea glass; the lavender they were stays, for
 // whoever chose it, under its own name.
 func TestDefaultThemes(t *testing.T) {
 	s := NewStore(t.TempDir())
@@ -71,8 +71,8 @@ func TestDefaultThemes(t *testing.T) {
 		name, accent, accentText string
 		dark                     bool
 	}{
-		DefaultDark:      {"Aurelia Dark", "#e2b55e", "#1a1408", true},
-		DefaultLight:     {"Aurelia Light", "#835a00", "#ffffff", false},
+		DefaultDark:      {"Aurelia Dark", "#7dd3c0", "#062019", true},
+		DefaultLight:     {"Aurelia Light", "#0b7468", "#ffffff", false},
 		"lavender":       {"Lavender", "#a48cff", "#100e1a", true},
 		"lavender-light": {"Lavender Light", "#6d4fe0", "#ffffff", false},
 	} {
@@ -98,7 +98,7 @@ func TestDefaultThemes(t *testing.T) {
 		}
 	}
 	// A theme that names no accent has Aurelia's.
-	if a := Resolve(Spec{Type: "dark"}).Accent.Hex(); a != "#e2b55e" {
+	if a := Resolve(Spec{Type: "dark"}).Accent.Hex(); a != "#7dd3c0" {
 		t.Errorf("the accent of a theme without one is %s", a)
 	}
 }
