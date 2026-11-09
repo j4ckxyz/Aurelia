@@ -461,7 +461,15 @@ type hero struct {
 	download    func() (state int, part float64)
 	setDownload func(on bool)
 	menu        func(m *ui.Menu)
+	// menuHas tells that menu has the favorite and the download already,
+	// as an album's: a narrow page's "…" does not add them again.
+	menuHas bool
 }
+
+// heroRowMin is the least width of the hero's row of buttons with all of
+// them: under it the heart and the download go into "…", so that the row
+// never wraps.
+const heroRowMin = 380
 
 func (a *App) hero(c *ui.Context, h hero) {
 	p := a.pal
@@ -487,12 +495,19 @@ func (a *App) hero(c *ui.Context, h hero) {
 			if h.meta != nil {
 				ui.Row(c).Gap(6).Wrap().Children(h.meta)
 			}
+			compact := a.contentWidth(c)-2*pagePad-size-gap < heroRowMin
 			ui.Row(c).Gap(10).Margin(10, 0, 0).Wrap().Children(func() {
 				if h.play != nil && a.pillButton(c, "play-fill", "Play", true).Clicked() {
 					h.play()
 				}
 				if h.shuffle != nil && a.pillButton(c, "shuffle", "Shuffle", false).Clicked() {
 					h.shuffle()
+				}
+				if compact {
+					if h.menu != nil || h.favorite != nil || h.download != nil {
+						a.iconButton(c, "ellipsis", "More", 36, 18).Menu(func(m *ui.Menu) { a.heroMore(m, h) })
+					}
+					return
 				}
 				if h.favorite != nil {
 					glyph, label := "heart", "Add to Favorites"
@@ -512,6 +527,57 @@ func (a *App) hero(c *ui.Context, h hero) {
 			})
 		})
 	})
+}
+
+// heroMore is the "…" of a narrow page's head: the heart and the
+// download, which have no room of their own there, then the page's menu.
+func (a *App) heroMore(m *ui.Menu, h hero) {
+	added := false
+	item := func(label string) *ui.MenuItem {
+		added = true
+		return m.Item(label)
+	}
+	if h.favorite != nil && !h.menuHas {
+		label := "Add to Favorites"
+		if *h.favorite {
+			label = "Remove from Favorites"
+		}
+		if item(label).Chosen() {
+			a.setFavorite(h.favoriteID, h.favorite, !*h.favorite)
+		}
+	}
+	if h.download != nil {
+		state, part := h.download()
+		switch state {
+		case dlQueued, dlActive:
+			item(fmt.Sprintf("Downloading… %d%%", int(part*100))).Disabled(true)
+			if !h.menuHas && item("Stop Download").Chosen() {
+				h.setDownload(false)
+			}
+		case dlFailed:
+			item("Some songs could not be downloaded").Disabled(true)
+			if item("Try Download Again").Chosen() {
+				h.setDownload(true)
+			}
+			if !h.menuHas && item("Remove Download").Chosen() {
+				h.setDownload(false)
+			}
+		case dlDone:
+			if !h.menuHas && item("Remove Download").Chosen() {
+				h.setDownload(false)
+			}
+		default:
+			if !h.menuHas && item("Download").Chosen() {
+				h.setDownload(true)
+			}
+		}
+	}
+	if h.menu != nil {
+		if added {
+			m.Separator()
+		}
+		h.menu(m)
+	}
 }
 
 // downloadButton downloads the songs of a page for offline, shows how
@@ -626,7 +692,8 @@ func (a *App) albumPage(c *ui.Context, r *ui.Route) {
 						a.downloads.removeAlbum(al)
 					}
 				},
-				menu: func(m *ui.Menu) { a.albumMenu(m, al) },
+				menu:    func(m *ui.Menu) { a.albumMenu(m, al) },
+				menuHas: true,
 			})
 		})
 		switch {

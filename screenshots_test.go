@@ -125,6 +125,14 @@ func TestScreenshots(t *testing.T) {
 	a.closeShare()
 	tt.Frame()
 
+	// A window between, with the sleep timer set: the album's buttons in
+	// one row, and the moon in the player's bar.
+	tt.SetSize(760, 620)
+	p.setSleep(sleepTime, 30*time.Minute)
+	show("aurelia-dark", "/album/al03")
+	shot("compact")
+	p.setSleep("", 0)
+
 	// The window at its smallest.
 	tt.SetSize(windowMinW, windowMinH)
 	show("aurelia-dark", "/album/al03")

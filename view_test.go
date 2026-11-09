@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1118,4 +1119,43 @@ func TestPlayerMore(t *testing.T) {
 	if !a.stage.on {
 		t.Error("V did not show the record")
 	}
+}
+
+// A narrow page keeps Play and Shuffle in its head's row, and puts the
+// heart and the download under "…", so that the row never wraps.
+func TestNarrowHero(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, windowMinW, windowMinH)
+	a.router.Push("/album/al1")
+	tt.Frame()
+	wantTexts(t, tt, "Play", "Shuffle", "More")
+	for _, gone := range []string{"Add to Favorites", "Download"} {
+		if tt.HasText(gone) {
+			t.Errorf("a narrow album's head still shows %q", gone)
+		}
+	}
+	click(t, tt, "More")
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Add to Favorites"); err != nil {
+		t.Fatalf("%v; the menu: %q", err, tt.Menu())
+	}
+	if !a.lib.Album("al1").Favorite {
+		t.Error("the album is not a favorite")
+	}
+	// A playlist's menu has no download of its own: the head adds it.
+	a.pages.fetched, a.pages.fetching, a.pages.fetchErr = map[string][]*library.Song{"playlist:p1": {a.lib.Song("s1")}}, map[string]bool{}, map[string]string{}
+	a.router.Push("/playlist/p1")
+	tt.Frame()
+	tt.Frame()
+	click(t, tt, "More")
+	tt.Frame()
+	if m := tt.Menu(); !slices.Contains(m, "Download") {
+		t.Errorf("a narrow playlist's menu: %q", m)
+	}
+	// Wide, they are buttons again.
+	tt.CloseMenu()
+	tt.SetSize(1240, 800)
+	a.router.Push("/album/al1")
+	tt.Frame()
+	wantTexts(t, tt, "Remove from Favorites", "Download")
 }

@@ -44,7 +44,11 @@ func (a *App) playerBar(c *ui.Context) {
 			if song == nil {
 				return
 			}
-			pic := a.art(c, song.ImageItem, song.ImageTag, thumbArt, "music", nil).Size(50, 50).Radius(max(p.radius-2, 3)).Cursor(ui.CursorPointer)
+			art := float32(50)
+			if tight {
+				art = 44
+			}
+			pic := a.art(c, song.ImageItem, song.ImageTag, thumbArt, "music", nil).Size(art, art).Radius(max(p.radius-2, 3)).Shrink(0).Cursor(ui.CursorPointer)
 			if pic.Clicked() && song.AlbumID != "" {
 				a.goTo("/album/" + song.AlbumID)
 			}
@@ -76,12 +80,16 @@ func (a *App) playerBar(c *ui.Context) {
 			}
 		})
 
-		// The buttons, over the place in the song.
-		center := float32(260)
+		// The buttons, over the place in the song. In a narrow window
+		// they and the buttons at the right take only their room, and
+		// the song's title has the rest.
+		middle := ui.Column(c).Gap(2).AlignItems(ui.Stretch)
 		if tight {
-			center = 200
+			middle.Width(184).Shrink(0)
+		} else {
+			middle.Grow(1.4).Basis(0).MinWidth(260).MaxWidth(680)
 		}
-		ui.Column(c).Grow(1.4).Basis(0).MinWidth(center).MaxWidth(680).Gap(2).AlignItems(ui.Stretch).Children(func() {
+		middle.Children(func() {
 			ui.Row(c).Justify(ui.Center).Gap(8).Children(func() {
 				if !tight && a.toggleIcon(c, "shuffle", "Shuffle", a.settings.Shuffle, 32, 16).Clicked() {
 					pl.setShuffle(!a.settings.Shuffle)
@@ -108,7 +116,13 @@ func (a *App) playerBar(c *ui.Context) {
 		})
 
 		// Now Playing, the queue, the rest under "…", and the volume.
-		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Justify(ui.End).Gap(4).Children(func() {
+		right := ui.Row(c).Justify(ui.End).Gap(4)
+		if tight {
+			right.Shrink(0)
+		} else {
+			right.Grow(1).Basis(0).MinWidth(0)
+		}
+		right.Children(func() {
 			if a.iconButton(c, "square-play", "Now Playing", 32, 16).Disabled(song == nil).Clicked() {
 				a.openStage()
 			}
