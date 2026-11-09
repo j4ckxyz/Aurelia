@@ -21,6 +21,24 @@ little kept on disk.
 
 ## To do
 
+### From the design critique (2026-11-09, 27/40)
+
+Built, with tests and screenshots checked; not yet seen running in the
+app, so each stays here until it is.
+
+- [ ] Search's "/" and Cmd+K put the keyboard in the field's text; Up
+      from the top result goes back to it.
+- [ ] Downloaded is one quiet check, in rows and the header; colour only
+      while a download goes on; a failed one says so.
+- [ ] One meaning per icon: Lyrics a quote, Now Playing its own, Browse
+      in colour; Favorites says Play and Shuffle.
+- [ ] The player bar's right side: Now Playing, Queue, "…" (sleep timer,
+      the device to play on), volume.
+- [ ] A small window keeps the album's buttons on one line, the song's
+      name whole, and Shuffle in reach.
+- [ ] Sea glass themes by default, and the app's icon in sea glass; the
+      lavender kept as Lavender.
+
 ### Playing like Spotify
 
 Built in 0.4.0, with tests for each; not yet seen running in the app,

@@ -461,7 +461,15 @@ type hero struct {
 	download    func() (state int, part float64)
 	setDownload func(on bool)
 	menu        func(m *ui.Menu)
+	// menuHas tells that menu has the favorite and the download already,
+	// as an album's: a narrow page's "…" does not add them again.
+	menuHas bool
 }
+
+// heroRowMin is the least width of the hero's row of buttons with all of
+// them: under it the heart and the download go into "…", so that the row
+// never wraps.
+const heroRowMin = 380
 
 func (a *App) hero(c *ui.Context, h hero) {
 	p := a.pal
@@ -487,12 +495,19 @@ func (a *App) hero(c *ui.Context, h hero) {
 			if h.meta != nil {
 				ui.Row(c).Gap(6).Wrap().Children(h.meta)
 			}
+			compact := a.contentWidth(c)-2*pagePad-size-gap < heroRowMin
 			ui.Row(c).Gap(10).Margin(10, 0, 0).Wrap().Children(func() {
 				if h.play != nil && a.pillButton(c, "play-fill", "Play", true).Clicked() {
 					h.play()
 				}
 				if h.shuffle != nil && a.pillButton(c, "shuffle", "Shuffle", false).Clicked() {
 					h.shuffle()
+				}
+				if compact {
+					if h.menu != nil || h.favorite != nil || h.download != nil {
+						a.iconButton(c, "ellipsis", "More", 36, 18).Menu(func(m *ui.Menu) { a.heroMore(m, h) })
+					}
+					return
 				}
 				if h.favorite != nil {
 					glyph, label := "heart", "Add to Favorites"
@@ -514,8 +529,60 @@ func (a *App) hero(c *ui.Context, h hero) {
 	})
 }
 
+// heroMore is the "…" of a narrow page's head: the heart and the
+// download, which have no room of their own there, then the page's menu.
+func (a *App) heroMore(m *ui.Menu, h hero) {
+	added := false
+	item := func(label string) *ui.MenuItem {
+		added = true
+		return m.Item(label)
+	}
+	if h.favorite != nil && !h.menuHas {
+		label := "Add to Favorites"
+		if *h.favorite {
+			label = "Remove from Favorites"
+		}
+		if item(label).Chosen() {
+			a.setFavorite(h.favoriteID, h.favorite, !*h.favorite)
+		}
+	}
+	if h.download != nil {
+		state, part := h.download()
+		switch state {
+		case dlQueued, dlActive:
+			item(fmt.Sprintf("Downloading… %d%%", int(part*100))).Disabled(true)
+			if !h.menuHas && item("Stop Download").Chosen() {
+				h.setDownload(false)
+			}
+		case dlFailed:
+			item("Some songs could not be downloaded").Disabled(true)
+			if item("Try Download Again").Chosen() {
+				h.setDownload(true)
+			}
+			if !h.menuHas && item("Remove Download").Chosen() {
+				h.setDownload(false)
+			}
+		case dlDone:
+			if !h.menuHas && item("Remove Download").Chosen() {
+				h.setDownload(false)
+			}
+		default:
+			if !h.menuHas && item("Download").Chosen() {
+				h.setDownload(true)
+			}
+		}
+	}
+	if h.menu != nil {
+		if added {
+			m.Separator()
+		}
+		h.menu(m)
+	}
+}
+
 // downloadButton downloads the songs of a page for offline, shows how
-// far that is, and removes them.
+// far that is, and removes them. Done, it is a quiet check, as on the
+// songs' rows; the accent is for a download on its way.
 func (a *App) downloadButton(c *ui.Context, h hero) {
 	p := a.pal
 	state, part := h.download()
@@ -525,21 +592,27 @@ func (a *App) downloadButton(c *ui.Context, h hero) {
 		label = "Downloading: click to stop"
 	case dlDone:
 		label = "Downloaded: click to remove"
+	case dlFailed:
+		label = "Some songs could not be downloaded: click to try again"
 	}
 	b := ui.ButtonBase(c.Key("download")).Size(36, 36).Radius(18).Shrink(0).Label(label).Tooltip(label).Cursor(ui.CursorPointer)
-	if b.Hovered() {
+	hovered := b.Hovered()
+	if hovered {
 		b.Background(p.hover)
 	}
+	b.Transition(fade)
 	b.Children(func() {
+		fg := p.muted
+		if hovered {
+			fg = p.text
+		}
 		switch state {
 		case dlNone:
-			fg := p.muted
-			if b.Hovered() {
-				fg = p.text
-			}
 			ui.Icon(c, icon("arrow-down-to-line")).Size(18, 18).TextColor(fg)
 		case dlDone:
-			ui.Icon(c, icon("circle-check")).Size(19, 19).TextColor(p.accent)
+			ui.Icon(c, icon("check")).Size(18, 18).TextColor(fg)
+		case dlFailed:
+			ui.Icon(c, icon("circle-alert")).Size(18, 18).TextColor(p.danger)
 		default:
 			ui.Box(c).Size(19, 19).Draw(func(g *ui.Painter, r ui.Rect) {
 				ring(g, r, part, p.text.Alpha(0.2), p.accent)
@@ -547,7 +620,7 @@ func (a *App) downloadButton(c *ui.Context, h hero) {
 		}
 	})
 	if b.Clicked() {
-		h.setDownload(state == dlNone)
+		h.setDownload(state == dlNone || state == dlFailed)
 	}
 }
 
@@ -619,7 +692,8 @@ func (a *App) albumPage(c *ui.Context, r *ui.Route) {
 						a.downloads.removeAlbum(al)
 					}
 				},
-				menu: func(m *ui.Menu) { a.albumMenu(m, al) },
+				menu:    func(m *ui.Menu) { a.albumMenu(m, al) },
+				menuHas: true,
 			})
 		})
 		switch {
@@ -1062,10 +1136,10 @@ func (a *App) favoritesPage(c *ui.Context) {
 		cols := a.columns(c)
 		add(func(c *ui.Context) {
 			a.pageTitle(c, "Favorites", "", func() {
-				if len(songs) > 0 && a.pillButton(c, "play-fill", "Play songs", true).Clicked() {
+				if len(songs) > 0 && a.pillButton(c, "play-fill", "Play", true).Clicked() {
 					a.player.play(songs, 0)
 				}
-				if len(songs) > 0 && a.pillButton(c, "shuffle", "Shuffle songs", false).Clicked() {
+				if len(songs) > 0 && a.pillButton(c, "shuffle", "Shuffle", false).Clicked() {
 					a.player.playShuffled(songs)
 				}
 			})
@@ -1132,7 +1206,8 @@ func (a *App) downloadsPage(c *ui.Context) {
 				if len(here) > 0 && a.pillButton(c, "shuffle", "Shuffle", false).Clicked() {
 					a.player.playShuffled(here)
 				}
-				if a.pillButton(c, "trash", "Remove all", false).Clicked() {
+				// Quieter than playing: it asks first, and is rarely meant.
+				if a.textButton(c, "Remove all").Height(36).Radius(18).Padding(0, 14).Clicked() {
 					a.ask(promptState{
 						title: "Remove all downloads?", text: "Every downloaded song is deleted from this computer. They stay on the server, to stream or download again.",
 						confirm: "Remove All", danger: true,
@@ -1166,7 +1241,7 @@ func (a *App) downloadsPage(c *ui.Context) {
 		add(func(c *ui.Context) { a.listHeader(c, "", true) })
 		for i, s := range songs {
 			add(func(c *ui.Context) {
-				a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }, list: songs, at: i})
+				a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, hideDownloaded: true, play: func() { a.player.play(songs, i) }, list: songs, at: i})
 			})
 		}
 	})

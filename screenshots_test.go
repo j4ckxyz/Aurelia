@@ -18,6 +18,7 @@ import (
 
 	"aurelia/internal/jellyfin"
 	"aurelia/internal/library"
+	"aurelia/internal/theme"
 )
 
 // The screenshots of the README, when AURELIA_SCREENSHOTS names the
@@ -62,8 +63,8 @@ func TestScreenshots(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	show := func(theme, path string) {
-		a.settings.Theme = theme
+	show := func(id, path string) {
+		a.settings.Theme = id
 		a.router.Push(path)
 		tt.Frame()
 	}
@@ -83,28 +84,28 @@ func TestScreenshots(t *testing.T) {
 	}
 	a.downloads.bytes, a.downloads.counted = 412<<20, true
 
-	show("aurelia-dark", "/home")
+	show(theme.DefaultDark, "/home")
 	shot("home")
-	show("aurelia-dark", "/album/al03")
+	show(theme.DefaultDark, "/album/al03")
 	shot("album")
 	a.settings.QueueOpen = true
-	show("aurelia-dark", "/lyrics")
+	show(theme.DefaultDark, "/lyrics")
 	shot("lyrics")
 	a.settings.QueueOpen = false
-	show("aurelia-light", "/albums")
+	show(theme.DefaultLight, "/albums")
 	shot("albums-light")
 	show("tokyo-night", "/artist/ar02")
 	shot("artist-tokyo-night")
 	show("catppuccin-mocha", "/search?q=light")
 	a.search.query = "light"
 	shot("search-catppuccin")
-	show("aurelia-dark", "/settings")
+	show(theme.DefaultDark, "/settings")
 	shot("themes")
 	show("nord", "/downloads")
 	shot("downloads-nord")
 
 	// The record, a little turned, at a line of the song.
-	show("aurelia-dark", "/home")
+	show(theme.DefaultDark, "/home")
 	a.openStage()
 	a.stage.angle, a.stage.pointerAt = 0.7, time.Now().Add(-time.Hour)
 	p.paused = false // the buttons hide while a song plays
@@ -114,20 +115,28 @@ func TestScreenshots(t *testing.T) {
 	a.closeStage()
 
 	// Browsing, the equalizer and the picture to share.
-	show("aurelia-dark", "/genres")
+	show(theme.DefaultDark, "/genres")
 	shot("browse")
 	a.settings.EQ = EQSettings{On: true, Bands: [10]float64{5, 4, 3, 1, -1, -1, 1, 3, 4, 5}}
-	show("aurelia-dark", "/equalizer")
+	show(theme.DefaultDark, "/equalizer")
 	shot("equalizer")
-	show("aurelia-dark", "/album/al03")
+	show(theme.DefaultDark, "/album/al03")
 	a.shareAlbum(a.lib.Album("al03"))
 	shot("share")
 	a.closeShare()
 	tt.Frame()
 
+	// A window between, with the sleep timer set: the album's buttons in
+	// one row, and the moon in the player's bar.
+	tt.SetSize(760, 620)
+	p.setSleep(sleepTime, 30*time.Minute)
+	show("aurelia-dark", "/album/al03")
+	shot("compact")
+	p.setSleep("", 0)
+
 	// The window at its smallest.
 	tt.SetSize(windowMinW, windowMinH)
-	show("aurelia-dark", "/album/al03")
+	show(theme.DefaultDark, "/album/al03")
 	shot("small")
 }
 

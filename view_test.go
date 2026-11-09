@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -291,6 +292,72 @@ func TestSearchKeys(t *testing.T) {
 	tt.Key(0, ui.KeyDown)
 	if cu.shown {
 		t.Error("Down showed the marker with none shown")
+	}
+}
+
+// The keys that go to search put the keyboard in the field's text, where
+// what is typed searches, and Up from the top of what it found comes back.
+func TestSearchShortcut(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	typeKeys := func(s string) {
+		for _, r := range s {
+			tt.TypeKey(0, ui.KeyA+ui.Key(r-'a'), string(r))
+		}
+	}
+	// Whether a text input has the keyboard: the search page is titled
+	// Search too, so Focused("Search") would not tell.
+	typing := func() bool { _, ok := tt.TextCaret(); return ok }
+	tt.Key(0, ui.KeySlash)
+	if !typing() {
+		t.Fatal("/ did not put the keyboard in the search field")
+	}
+	// Letters type, not move: L and K are the marker's keys too.
+	typeKeys("light")
+	if a.search.query != "light" || a.router.Location() != "/search?q=light" {
+		t.Fatalf("after / and typing: the field holds %q, at %s", a.search.query, a.router.Location())
+	}
+	wantTexts(t, tt, "Nothing found for “light”")
+
+	// From another page, with the keyboard elsewhere.
+	click(t, tt, "Albums")
+	if a.search.query != "" || typing() {
+		t.Fatalf("on Albums: the field holds %q, focused %v", a.search.query, typing())
+	}
+	tt.Key(primary, ui.KeyK)
+	typeKeys("perf")
+	if a.search.query != "perf" || a.router.Location() != "/search?q=perf" {
+		t.Fatalf("after %v K and typing: the field holds %q, at %s", primary, a.search.query, a.router.Location())
+	}
+	wantTexts(t, tt, "Top result", "Perfect")
+
+	// Down goes to the top result, and Up from there back to the field.
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	cu := &a.cursor
+	if !cu.shown || typing() {
+		t.Fatalf("after Down: the marker shows %v, the field focused %v", cu.shown, typing())
+	}
+	tt.Key(0, ui.KeyUp)
+	tt.Frame()
+	if cu.shown || !typing() {
+		t.Fatalf("after Up from the top result: the marker shows %v, the field focused %v", cu.shown, typing())
+	}
+	typeKeys("ect")
+	if a.search.query != "perfect" {
+		t.Errorf("typing after Up: the field holds %q", a.search.query)
+	}
+	// Escape empties it, and the keyboard stays.
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.search.query != "" || !typing() {
+		t.Errorf("after Escape: the field holds %q, focused %v", a.search.query, typing())
+	}
+	// So does its button.
+	typeKeys("ed")
+	click(t, tt, "Clear")
+	if a.search.query != "" || !typing() {
+		t.Errorf("after Clear: the field holds %q, focused %v", a.search.query, typing())
 	}
 }
 
@@ -937,7 +1004,7 @@ func TestStage(t *testing.T) {
 	}
 	a.player.play(a.lib.AlbumSongs("al1"), 0)
 	tt.Frame()
-	click(t, tt, "The record and the lyrics")
+	click(t, tt, "Now Playing")
 	tt.Frame()
 	if !a.stage.on || tt.HasText("Albums") {
 		t.Fatalf("after its button: on %v, the app behind %v", a.stage.on, tt.HasText("Albums"))
@@ -945,6 +1012,21 @@ func TestStage(t *testing.T) {
 	tt.Move(300, 300)
 	tt.Frame()
 	wantTexts(t, tt, "Back to Aurelia", "Full screen", "In a small window of its own", "Pause", "Next")
+	// The lyrics' page is a button away, when the song has lyrics.
+	if tt.HasText("All the lyrics") {
+		t.Error("a song without lyrics has a button for them")
+	}
+	a.stage.lines = []jellyfin.LyricLine{{Text: "one", Start: 0}}
+	a.lyrics.bySong = map[string][]jellyfin.LyricLine{a.player.current().ID: a.stage.lines}
+	tt.Move(310, 300)
+	tt.Frame()
+	click(t, tt, "All the lyrics")
+	tt.Frame()
+	if a.stage.on || a.router.Path() != "/lyrics" {
+		t.Fatalf("after All the lyrics: on %v, at %s", a.stage.on, a.router.Path())
+	}
+	a.openStage()
+	tt.Frame()
 	// The keys still play and pause.
 	tt.Key(0, ui.KeySpace)
 	tt.Frame()
@@ -973,7 +1055,7 @@ func TestNarrowWindow(t *testing.T) {
 	if tt.HasText("PLAYLISTS") || tt.HasText("Shuffle") || tt.HasText("Volume") {
 		t.Errorf("the smallest window shows what it has no room for: %q", tt.Texts())
 	}
-	wantTexts(t, tt, "Show the sidebar", "Back", "Search", "Pause", "Next", "The record and the lyrics")
+	wantTexts(t, tt, "Show the sidebar", "Back", "Search", "Pause", "Next", "Now Playing", playerMoreLabel)
 	click(t, tt, "Show the sidebar")
 	tt.Frame()
 	wantTexts(t, tt, "PLAYLISTS", "Albums")
@@ -1034,4 +1116,112 @@ func TestPlayOn(t *testing.T) {
 	if p.current().ID != "s1" {
 		t.Errorf("Play after the end: playing %s", p.current().ID)
 	}
+}
+
+// The player bar's "…" holds the sleep timer and where the music plays,
+// and in a narrow window shuffle and repeat; the timer set, it says so.
+// The keys of what left the bar still work.
+func TestPlayerMore(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	a.player.play(a.lib.AlbumSongs("al1"), 0)
+	tt.Frame()
+	for _, gone := range []string{"Lyrics", "Sleep timer", "Play on another device", "The record and the lyrics"} {
+		if tt.HasText(gone) {
+			t.Errorf("the bar still has %q", gone)
+		}
+	}
+	wantTexts(t, tt, "Now Playing", "Queue", "Shuffle", "Repeat", playerMoreLabel)
+	click(t, tt, playerMoreLabel)
+	tt.Frame()
+	if got := strings.Join(tt.Menu(), ","); got != "Sleep Timer,Play On" {
+		t.Errorf("a wide window's menu: %s", got)
+	}
+	if err := tt.ChooseMenuItem("Sleep Timer", "In 30 minutes"); err != nil {
+		t.Fatalf("%v; the menu: %q", err, tt.Menu())
+	}
+	tt.Frame()
+	if a.player.sleep.mode != sleepTime {
+		t.Errorf("the timer is %+v", a.player.sleep)
+	}
+	click(t, tt, playerMoreLabel)
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Sleep Timer", "Turn Off"); err != nil {
+		t.Fatalf("%v; the menu: %q", err, tt.Menu())
+	}
+	if a.player.sleep.mode != "" {
+		t.Errorf("turned off, the timer is %+v", a.player.sleep)
+	}
+
+	// Narrow, shuffle and repeat are in it.
+	tt.SetSize(windowMinW, windowMinH)
+	tt.Frame()
+	click(t, tt, playerMoreLabel)
+	tt.Frame()
+	if got := strings.Join(tt.Menu(), ","); got != "Shuffle,Repeat,-,Sleep Timer,Play On" {
+		t.Errorf("a narrow window's menu: %s", got)
+	}
+	if err := tt.ChooseMenuItem("Shuffle"); err != nil {
+		t.Fatal(err)
+	}
+	click(t, tt, playerMoreLabel)
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Repeat", "One"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.settings.Shuffle || a.settings.Repeat != repeatOne {
+		t.Errorf("from the menu: shuffle %v, repeat %d", a.settings.Shuffle, a.settings.Repeat)
+	}
+
+	// The keys: the lyrics' page, and the record.
+	tt.SetSize(1240, 800)
+	tt.Key(move, ui.KeyL)
+	tt.Frame()
+	if a.router.Path() != "/lyrics" {
+		t.Errorf("Alt+Shift+L went to %s", a.router.Path())
+	}
+	tt.Key(0, ui.KeyV)
+	tt.Frame()
+	if !a.stage.on {
+		t.Error("V did not show the record")
+	}
+}
+
+// A narrow page keeps Play and Shuffle in its head's row, and puts the
+// heart and the download under "…", so that the row never wraps.
+func TestNarrowHero(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, windowMinW, windowMinH)
+	a.router.Push("/album/al1")
+	tt.Frame()
+	wantTexts(t, tt, "Play", "Shuffle", "More")
+	for _, gone := range []string{"Add to Favorites", "Download"} {
+		if tt.HasText(gone) {
+			t.Errorf("a narrow album's head still shows %q", gone)
+		}
+	}
+	click(t, tt, "More")
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Add to Favorites"); err != nil {
+		t.Fatalf("%v; the menu: %q", err, tt.Menu())
+	}
+	if !a.lib.Album("al1").Favorite {
+		t.Error("the album is not a favorite")
+	}
+	// A playlist's menu has no download of its own: the head adds it.
+	a.pages.fetched, a.pages.fetching, a.pages.fetchErr = map[string][]*library.Song{"playlist:p1": {a.lib.Song("s1")}}, map[string]bool{}, map[string]string{}
+	a.router.Push("/playlist/p1")
+	tt.Frame()
+	tt.Frame()
+	click(t, tt, "More")
+	tt.Frame()
+	if m := tt.Menu(); !slices.Contains(m, "Download") {
+		t.Errorf("a narrow playlist's menu: %q", m)
+	}
+	// Wide, they are buttons again.
+	tt.CloseMenu()
+	tt.SetSize(1240, 800)
+	a.router.Push("/album/al1")
+	tt.Frame()
+	wantTexts(t, tt, "Remove from Favorites", "Download")
 }

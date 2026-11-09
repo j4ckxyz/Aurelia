@@ -19,15 +19,15 @@ func TestFavoritesPlayAndSort(t *testing.T) {
 	tt := ui.NewTester(a.view, 1240, 800)
 	a.router.Push("/favorites")
 	tt.Frame()
-	wantTexts(t, tt, "Play songs", "Shuffle songs", "Sort by", "Title")
-	click(t, tt, "Play songs")
+	wantTexts(t, tt, "Play", "Shuffle", "Sort by", "Title")
+	click(t, tt, "Play")
 	p := a.player
 	if got := queueIDs(p); got != "s3 s1" || p.index != 0 {
 		t.Errorf("by title: %s at %d", got, p.index)
 	}
 	a.settings.FavoriteSort = "Album"
 	tt.Frame()
-	click(t, tt, "Play songs")
+	click(t, tt, "Play")
 	if got := queueIDs(p); got != "s1 s3" || p.index != 0 {
 		t.Errorf("by album: %s at %d", got, p.index)
 	}

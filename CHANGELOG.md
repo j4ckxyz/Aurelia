@@ -1,5 +1,21 @@
 # Changes
 
+## 0.4.1
+
+- A new look: sea glass, the water of the moon jellyfish Aurelia is named
+  after, in place of the lavender, in the app and its icon. The lavender
+  stays, as Lavender and Lavender Light, and a theme you chose stays yours.
+- "/" and Cmd (Ctrl)+K put the keyboard in the search field at once; Up
+  from the top result goes back to it.
+- Downloaded songs show one quiet check, in their rows and on the album;
+  the color shows only while a download goes on, and one that failed says
+  so and tries again when clicked.
+- A calmer player bar: Now Playing (the record and the lyrics), the queue,
+  a "…" with the sleep timer and the device to play on, and the volume.
+  Lyrics have a quote of their own, and Browse a colored icon.
+- In a small window an album's buttons stay on one line, the song's name
+  shows whole, and Shuffle and Repeat are in the player bar's "…".
+
 ## 0.4.0
 
 - Play plays in order: an album, a playlist or a list plays as it is,

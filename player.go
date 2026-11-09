@@ -600,8 +600,12 @@ func (p *player) setShuffle(on bool) {
 	p.app.saveQueue()
 }
 
-func (p *player) cycleRepeat() {
-	p.app.settings.Repeat = (p.app.settings.Repeat + 1) % 3
+func (p *player) cycleRepeat() { p.setRepeat((p.app.settings.Repeat + 1) % 3) }
+
+// setRepeat repeats nothing, the queue or the song, here or on the device
+// that plays.
+func (p *player) setRepeat(mode int) {
+	p.app.settings.Repeat = mode
 	p.app.saveSettings()
 	if f := p.far; f != nil {
 		mode := repeatModes[p.app.settings.Repeat]

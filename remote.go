@@ -367,36 +367,29 @@ func (a *App) playstate(command string, at time.Duration) {
 
 var repeatModes = []string{repeatOff: "RepeatNone", repeatAll: "RepeatAll", repeatOne: "RepeatOne"}
 
-// deviceButton is the button of the player's bar that chooses where the
-// music plays.
-func (a *App) deviceButton(c *ui.Context) {
+// deviceMenu chooses where the music plays, in the player bar's "…".
+func (a *App) deviceMenu(m *ui.Menu) {
 	f := a.player.far
-	b := a.toggleIcon(c, "monitor-speaker", "Play on another device", f != nil, 32, 16)
-	if b.Hovered() {
-		a.refreshDevices() // ready by the click
+	a.refreshDevices()
+	if m.Item("This Computer").Checked(f == nil).Chosen() && f != nil {
+		a.playHere(true)
 	}
-	b.Menu(func(m *ui.Menu) {
-		a.refreshDevices()
-		if m.Item("This computer").Checked(f == nil).Chosen() && f != nil {
-			a.playHere(true)
+	m.Separator()
+	shown := 0
+	for _, dev := range a.remote.devices {
+		shown++
+		label := dev.Title()
+		if dev.Playing != nil && (f == nil || f.dev.ID != dev.ID) {
+			label += " — " + dev.Playing.Item.Name
 		}
-		m.Separator()
-		shown := 0
-		for _, dev := range a.remote.devices {
-			shown++
-			label := dev.Title()
-			if dev.Playing != nil && (f == nil || f.dev.ID != dev.ID) {
-				label += " — " + dev.Playing.Item.Name
-			}
-			if m.Item(label).Checked(f != nil && f.dev.ID == dev.ID).Chosen() {
-				a.playOn(dev)
-			}
+		if m.Item(label).Checked(f != nil && f.dev.ID == dev.ID).Chosen() {
+			a.playOn(dev)
 		}
-		if shown == 0 {
-			m.Item("No other devices").Disabled(true)
-			m.Item("Open Aurelia or a Jellyfin app elsewhere, signed in as you").Disabled(true)
-		}
-	})
+	}
+	if shown == 0 {
+		m.Item("No other devices").Disabled(true)
+		m.Item("Open Aurelia or a Jellyfin app elsewhere, signed in as you").Disabled(true)
+	}
 }
 
 // farStrip tells, above the player's bar, that another device plays.
