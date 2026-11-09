@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo"
 
 	"aurelia/internal/jellyfin"
+	"aurelia/internal/theme"
 )
 
 // Repeat modes.
@@ -166,6 +167,8 @@ func loadSettings(d dirs) Settings {
 	if s.Theme == "" {
 		s.Theme = "auto"
 	}
+	// Whoever chose Aurelia's own theme when it was lavender keeps it.
+	s.Theme = theme.Migrate(s.Theme)
 	if s.AudioCacheMB <= 0 {
 		s.AudioCacheMB = defaultAudioCacheMB
 	}

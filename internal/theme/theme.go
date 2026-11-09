@@ -140,9 +140,10 @@ func Resolve(s Spec) *Theme {
 	}
 	t.TextFaint = Mix(t.TextMuted, bg, 0.4)
 
-	accent := Color{164, 140, 255, 255}
+	// Aurelia's gold, unless the theme has an accent of its own.
+	accent := Color{226, 181, 94, 255}
 	if !t.Dark {
-		accent = Color{109, 79, 224, 255}
+		accent = Color{131, 90, 0, 255}
 	}
 	if c, ok := get("accent"); ok {
 		// An accent that does not show on the background is none.
