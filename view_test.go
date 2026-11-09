@@ -168,6 +168,132 @@ func TestSearch(t *testing.T) {
 	wantTexts(t, tt, "Artists", "Beyoncé", "Lemonade", "Formation")
 }
 
+// A search shows the best of what it found first, whatever its kind,
+// with the songs that match best beside it; Enter in the field plays it.
+func TestSearchTopResult(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	p := a.player
+	search := func(q string) {
+		t.Helper()
+		a.router.Push("/search?q=" + q)
+		tt.Frame()
+		click(t, tt, "Search")
+	}
+	// A song's title: the song first, above the artists and albums.
+	search("perfect")
+	wantTexts(t, tt, "Top result", "Song", "Songs")
+	topAt, _ := tt.Find("Top result")
+	if albums, ok := tt.Find("Albums"); ok && albums.Y < topAt.Y {
+		t.Errorf("albums at %v, above the top result at %v", albums.Y, topAt.Y)
+	}
+	tt.Key(0, ui.KeyEnter)
+	if s := p.current(); s == nil || s.ID != "s2" || len(p.queue) != 1 || p.similarFor != "s2" {
+		t.Errorf("Enter on a song: playing %v, queue %s", s, queueIDs(p))
+	}
+	// An artist's name: the artist, whose songs Enter plays in order.
+	search("ed sheeran")
+	wantTexts(t, tt, "Top result", "Artist", "Shape of You", "Perfect", "The A Team")
+	tt.Key(0, ui.KeyEnter)
+	if got := queueIDs(p); got != "s1 s2 s4" || p.index != 0 {
+		t.Errorf("Enter on an artist: %s at %d", got, p.index)
+	}
+	// An album's name: the album, in order.
+	search("lemonade")
+	wantTexts(t, tt, "Top result", "Album")
+	tt.Key(0, ui.KeyEnter)
+	if got := queueIDs(p); got != "s3" {
+		t.Errorf("Enter on an album: %s", got)
+	}
+	// A playlist's, where nothing else matches.
+	search("road")
+	wantTexts(t, tt, "Top result", "Playlist", "Road trip", "2 songs")
+	// A click on the card opens an artist, an album or a playlist.
+	click(t, tt, "Road trip")
+	if a.router.Path() != "/playlist/p1" {
+		t.Errorf("a click on the top result: at %s", a.router.Path())
+	}
+	// A song of the results still plays on its own, then songs like it.
+	search("ed sheeran")
+	box, ok := tt.Find("The A Team")
+	if !ok {
+		t.Fatalf("no song The A Team: %q", tt.Texts())
+	}
+	tt.ClickAt(box.X+4, box.Y+4)
+	tt.ClickAt(box.X+4, box.Y+4)
+	if s := p.current(); s == nil || s.ID != "s4" || len(p.queue) != 1 || p.similarFor != "s4" {
+		t.Errorf("a double click on a song found: playing %v, queue %s", s, queueIDs(p))
+	}
+	// Narrow, the songs go under the top result.
+	tt.SetSize(800, 700)
+	tt.Frame()
+	wantTexts(t, tt, "Top result", "Songs", "The A Team")
+	top, _ := tt.Find("Top result")
+	songs, _ := tt.Find("Songs")
+	if songs.Y <= top.Y+40 {
+		t.Errorf("narrow, the songs at %v are not under the top result at %v", songs.Y, top.Y)
+	}
+}
+
+// Down in the search field takes the keyboard to the results, with the
+// marker on the top result: the arrows and Enter move and choose there.
+func TestSearchKeys(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	p := a.player
+	click(t, tt, "Search")
+	tt.Type("ed")
+	wantTexts(t, tt, "Top result", "Ed Sheeran", "Shape of You")
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	cu := &a.cursor
+	if !cu.shown || cu.line != 0 || cu.col != 0 {
+		t.Fatalf("after Down in the field: the marker shows %v, at line %d, place %d", cu.shown, cu.line, cu.col)
+	}
+	// Letters move the marker now, not type: the field has not the keyboard.
+	tt.TypeKey(0, ui.KeyL, "l")
+	if a.search.query != "ed" || cu.line != 0 || cu.col != 1 {
+		t.Errorf("after L: the field holds %q, the marker at line %d, place %d", a.search.query, cu.line, cu.col)
+	}
+	// Down goes down the songs beside the top result, Up back up them.
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyUp)
+	if cu.line != 1 || cu.col != 1 {
+		t.Errorf("after Down, Down, Up: line %d, place %d", cu.line, cu.col)
+	}
+	tt.Key(0, ui.KeyEnter)
+	if s := p.current(); s == nil || s.ID != "s2" || p.similarFor != "s2" {
+		t.Errorf("Enter on the second song: playing %v", s)
+	}
+	// Left from the songs to the top result, and Enter opens the artist.
+	tt.Key(0, ui.KeyUp)
+	tt.Key(0, ui.KeyLeft)
+	if cu.line != 0 || cu.col != 0 {
+		t.Errorf("after Up and Left: line %d, place %d", cu.line, cu.col)
+	}
+	tt.Key(0, ui.KeyEnter)
+	if a.router.Path() != "/artist/ar1" {
+		t.Errorf("Enter on the top result: at %s", a.router.Path())
+	}
+	// A click in the field takes the keyboard back, and typing there puts
+	// the marker away.
+	click(t, tt, "Back")
+	tt.Key(0, ui.KeyDown)
+	click(t, tt, "Search")
+	tt.Type(" sheeran")
+	if cu.shown || a.search.query != "ed sheeran" {
+		t.Errorf("typing again: the marker shows %v, the field holds %q", cu.shown, a.search.query)
+	}
+	// Away from the marker, the arrows scroll the page as they did.
+	a.router.Push("/albums")
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	if cu.shown {
+		t.Error("Down showed the marker with none shown")
+	}
+}
+
 // Playing fills the queue from the song chosen, and the queue's buttons
 // move through it.
 func TestQueue(t *testing.T) {

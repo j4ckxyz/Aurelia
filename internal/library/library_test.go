@@ -85,6 +85,26 @@ func TestSearch(t *testing.T) {
 	if r := l.Search("sheeran", Limits{Songs: 1}); len(r.Songs) != 1 || r.Songs[0].ID != "s1" {
 		t.Errorf("limit and plays: %v", r.Songs)
 	}
+	// The best match of all comes first, whatever its kind; an artist
+	// before an album and an album before a song that match as well.
+	for q, want := range map[string]Match{
+		"perfect":    {Song: l.Song("s2")},
+		"ed sheeran": {Artist: l.Artist("ar1")},
+		"divide":     {Album: l.Album("al1")},
+		"shape":      {Song: l.Song("s1")},
+		"mornings":   {Playlist: l.Playlist("p1")},
+	} {
+		if r := l.Search(q, Limits{Songs: 1}); len(r.Best) == 0 || r.Best[0] != want {
+			t.Errorf("%s: the best is %+v", q, r.Best)
+		}
+	}
+	if r := l.Search("perfect", Limits{}); len(r.Best) != 2 || r.Best[1].Playlist == nil {
+		t.Errorf("perfect: the first of each kind %+v", r.Best)
+	}
+	l.Data.Albums = append(l.Data.Albums, Album{ID: "al4", Name: "Perfect", Artist: "Ed Sheeran"})
+	if r := Build(l.Data).Search("perfect", Limits{}); len(r.Best) != 3 || r.Best[0].Album == nil || r.Best[1].Song == nil {
+		t.Errorf("an album and a song both named perfect: %+v", r.Best)
+	}
 	if r := l.Search("  ", Limits{}); !r.Empty() {
 		t.Error("an empty query found something")
 	}

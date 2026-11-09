@@ -79,6 +79,19 @@ type Results struct {
 	Albums    []*Album
 	Songs     []*Song
 	Playlists []*Playlist
+	// Best are the first of each kind, the best match of all first: the
+	// one whose name is nearest the query, and of those as near, an
+	// artist before an album, an album before a song, a song before a
+	// playlist.
+	Best []Match
+}
+
+// Match is one thing a search found: one of its fields is set.
+type Match struct {
+	Artist   *Artist
+	Album    *Album
+	Song     *Song
+	Playlist *Playlist
 }
 
 // Empty reports whether nothing was found.
@@ -127,10 +140,16 @@ type scored[T any] struct {
 	tie   int // more is better
 }
 
-func best[T any](found []scored[T], limit int) []T {
+// best returns the items found in order, the best first, and the score
+// of the best: -1 when none was found.
+func best[T any](found []scored[T], limit int) ([]T, int) {
 	slices.SortStableFunc(found, func(a, b scored[T]) int {
 		return cmp.Or(cmp.Compare(a.score, b.score), cmp.Compare(b.tie, a.tie))
 	})
+	top := -1
+	if len(found) > 0 {
+		top = found[0].score
+	}
 	if limit > 0 && len(found) > limit {
 		found = found[:limit]
 	}
@@ -138,7 +157,7 @@ func best[T any](found []scored[T], limit int) []T {
 	for i, f := range found {
 		out[i] = f.item
 	}
-	return out
+	return out, top
 }
 
 // Limits are how many of each kind a search returns; 0 is all.
@@ -182,10 +201,32 @@ func (l *Library) Search(query string, lim Limits) Results {
 			playlists = append(playlists, scored[*Playlist]{p, s, p.Songs})
 		}
 	}
-	return Results{
-		Artists:   best(artists, lim.Artists),
-		Albums:    best(albums, lim.Albums),
-		Songs:     best(songs, lim.Songs),
-		Playlists: best(playlists, lim.Playlists),
+	var r Results
+	var scores [4]int
+	r.Artists, scores[0] = best(artists, lim.Artists)
+	r.Albums, scores[1] = best(albums, lim.Albums)
+	r.Songs, scores[2] = best(songs, lim.Songs)
+	r.Playlists, scores[3] = best(playlists, lim.Playlists)
+	// The first of each kind, in the order of their scores: the kinds are
+	// in the order that breaks a tie already.
+	firsts := []Match{
+		{Artist: first(r.Artists)}, {Album: first(r.Albums)},
+		{Song: first(r.Songs)}, {Playlist: first(r.Playlists)},
 	}
+	kinds := []int{0, 1, 2, 3}
+	slices.SortStableFunc(kinds, func(a, b int) int { return cmp.Compare(scores[a], scores[b]) })
+	for _, k := range kinds {
+		if scores[k] >= 0 {
+			r.Best = append(r.Best, firsts[k])
+		}
+	}
+	return r
+}
+
+// first returns the first of a list, nil when it is empty.
+func first[T any](list []*T) *T {
+	if len(list) == 0 {
+		return nil
+	}
+	return list[0]
 }
