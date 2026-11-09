@@ -61,6 +61,7 @@ const (
 	dlQueued
 	dlActive
 	dlDone
+	dlFailed // asked for, and the last try did not bring it
 )
 
 func newDownloads(app *App) *downloads {
@@ -144,33 +145,42 @@ func (d *downloads) state(id string) (state int, part float64) {
 		return dlActive, part
 	case d.queued[id]:
 		return dlQueued, 0
+	case d.failed[id] != "" && d.songs[id] != nil:
+		return dlFailed, 0
 	}
 	return dlNone, 0
 }
 
 // group tells how far the downloads of several songs are, as one: done
-// when all are, downloading while any is asked for and not here yet.
+// when all are, downloading while any is asked for and not here yet,
+// failed when some could not be had and none is still on its way.
 func (d *downloads) group(songs []*library.Song) (state int, part float64) {
 	if len(songs) == 0 {
 		return dlNone, 0
 	}
-	n, wanted := 0.0, 0
+	n, wanted, failed, pending := 0.0, 0, 0, 0
 	for _, s := range songs {
 		st, p := d.state(s.ID)
-		if st != dlNone {
-			wanted++
-		}
-		if st == dlDone {
+		switch st {
+		case dlNone:
+			continue
+		case dlDone:
 			n++
-		} else {
+		case dlFailed:
+			failed++
+		default:
 			n += p
+			pending++
 		}
+		wanted++
 	}
 	switch {
 	case wanted == 0:
 		return dlNone, 0
 	case n >= float64(len(songs)):
 		return dlDone, 1
+	case failed > 0 && pending == 0:
+		return dlFailed, n / float64(len(songs))
 	case wanted < len(songs) && len(d.active) == 0 && n == float64(wanted):
 		return dlNone, 0 // some songs of it, downloaded on their own
 	}
@@ -414,16 +424,19 @@ func (d *downloads) list() []*library.Song {
 }
 
 // downloadMark shows how far a download is, in a box of size points: a
-// ring filling while it downloads, a mark once it is here.
+// quiet check once it is here, a ring in the accent filling while it
+// downloads, and a warning in the danger color when it could not be.
 func (a *App) downloadMark(c *ui.Context, state int, part float64, size float32) {
 	p := a.pal
 	switch state {
 	case dlDone:
-		ui.Icon(c, icon("circle-arrow-down")).Size(size, size).TextColor(p.accent).Label("Downloaded")
+		ui.Icon(c, icon("check")).Size(size-2, size-2).TextColor(p.muted).Label("Downloaded")
 	case dlQueued, dlActive:
 		ui.Box(c).Size(size, size).Label("Downloading").Draw(func(g *ui.Painter, r ui.Rect) {
 			ring(g, r, part, p.text.Alpha(0.2), p.accent)
 		})
+	case dlFailed:
+		ui.Icon(c, icon("circle-alert")).Size(size, size).TextColor(p.danger).Label("Could not download")
 	}
 }
 

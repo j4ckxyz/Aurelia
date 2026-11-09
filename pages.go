@@ -515,7 +515,8 @@ func (a *App) hero(c *ui.Context, h hero) {
 }
 
 // downloadButton downloads the songs of a page for offline, shows how
-// far that is, and removes them.
+// far that is, and removes them. Done, it is a quiet check, as on the
+// songs' rows; the accent is for a download on its way.
 func (a *App) downloadButton(c *ui.Context, h hero) {
 	p := a.pal
 	state, part := h.download()
@@ -525,21 +526,27 @@ func (a *App) downloadButton(c *ui.Context, h hero) {
 		label = "Downloading: click to stop"
 	case dlDone:
 		label = "Downloaded: click to remove"
+	case dlFailed:
+		label = "Some songs could not be downloaded: click to try again"
 	}
 	b := ui.ButtonBase(c.Key("download")).Size(36, 36).Radius(18).Shrink(0).Label(label).Tooltip(label).Cursor(ui.CursorPointer)
-	if b.Hovered() {
+	hovered := b.Hovered()
+	if hovered {
 		b.Background(p.hover)
 	}
+	b.Transition(fade)
 	b.Children(func() {
+		fg := p.muted
+		if hovered {
+			fg = p.text
+		}
 		switch state {
 		case dlNone:
-			fg := p.muted
-			if b.Hovered() {
-				fg = p.text
-			}
 			ui.Icon(c, icon("arrow-down-to-line")).Size(18, 18).TextColor(fg)
 		case dlDone:
-			ui.Icon(c, icon("circle-check")).Size(19, 19).TextColor(p.accent)
+			ui.Icon(c, icon("check")).Size(18, 18).TextColor(fg)
+		case dlFailed:
+			ui.Icon(c, icon("circle-alert")).Size(18, 18).TextColor(p.danger)
 		default:
 			ui.Box(c).Size(19, 19).Draw(func(g *ui.Painter, r ui.Rect) {
 				ring(g, r, part, p.text.Alpha(0.2), p.accent)
@@ -547,7 +554,7 @@ func (a *App) downloadButton(c *ui.Context, h hero) {
 		}
 	})
 	if b.Clicked() {
-		h.setDownload(state == dlNone)
+		h.setDownload(state == dlNone || state == dlFailed)
 	}
 }
 
@@ -1132,7 +1139,8 @@ func (a *App) downloadsPage(c *ui.Context) {
 				if len(here) > 0 && a.pillButton(c, "shuffle", "Shuffle", false).Clicked() {
 					a.player.playShuffled(here)
 				}
-				if a.pillButton(c, "trash", "Remove all", false).Clicked() {
+				// Quieter than playing: it asks first, and is rarely meant.
+				if a.textButton(c, "Remove all").Height(36).Radius(18).Padding(0, 14).Clicked() {
 					a.ask(promptState{
 						title: "Remove all downloads?", text: "Every downloaded song is deleted from this computer. They stay on the server, to stream or download again.",
 						confirm: "Remove All", danger: true,
@@ -1166,7 +1174,7 @@ func (a *App) downloadsPage(c *ui.Context) {
 		add(func(c *ui.Context) { a.listHeader(c, "", true) })
 		for i, s := range songs {
 			add(func(c *ui.Context) {
-				a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, play: func() { a.player.play(songs, i) }, list: songs, at: i})
+				a.songRow(c.Key(s.ID), songRow{song: s, showAlbum: true, hideDownloaded: true, play: func() { a.player.play(songs, i) }, list: songs, at: i})
 			})
 		}
 	})
