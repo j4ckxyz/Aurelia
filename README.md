@@ -109,9 +109,9 @@ installing a newer `.deb` instead.
   outputs, and the one you choose is kept: the sound moves to it while a
   song plays, and goes back to the system's default when it is not plugged
   in, and back again when it is. **Crossfade** (2 to 12 seconds, never
-  between songs that follow each other on an album) and a **sleep timer**
-  (after a time, with the sound fading out, or at the end of the song or
-  the album) are there too.
+  between songs that follow each other on an album) is there too, and a
+  **sleep timer** (after a time, with the sound fading out, or at the end
+  of the song or the album) is in the "…" of the player's bar.
 - **Share as a picture.** "Share as a Picture…" in the menu of a song or an
   album makes a clean picture of its cover with its name and the artist's,
   on white, on black, on a color of your own or on the cover's own colors,
@@ -139,12 +139,12 @@ installing a newer `.deb` instead.
 - **Short animations**, a hint of movement as pages, panels and pictures
   come in, that follow the system's Reduce motion (Settings ▸ Appearance ▸
   Animations).
-- **The record.** A button of the player's bar, or V, shows the song in
+- **The record.** Now Playing in the player's bar, or V, shows the song in
   place of the app: its cover as a record that turns while it plays, over
   the cover's own colors, and the lyrics under it, each line sliding up as
   it is sung. F puts it over the whole screen. It also goes to a small
   window of its own (⇧⌘M) that a pin keeps above your other windows.
-- **Play on another device.** The devices button of the player's bar lists
+- **Play on another device.** Play On, in the "…" of the player's bar, lists
   the other places you are signed in to Jellyfin that play music: an
   Aurelia on another computer, Jellyfin's web and mobile apps. Choose one
   and what plays here goes on there; Aurelia then shows what that device

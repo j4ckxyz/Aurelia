@@ -329,6 +329,12 @@ func (a *App) stageButtons(c *ui.Context, song *library.Song) {
 				a.closeMini()
 			}
 		default:
+			// The lyrics as a page, to read them through or to go to a
+			// line of the song.
+			if len(st.lines) > 0 && button("text-quote", "All the lyrics", 34, 16, false, false).Clicked() {
+				a.closeStage()
+				a.goTo("/lyrics")
+			}
 			if button("picture-in-picture-2", "In a small window of its own", 34, 16, false, false).Clicked() {
 				a.popOut()
 			}
