@@ -1069,10 +1069,10 @@ func (a *App) favoritesPage(c *ui.Context) {
 		cols := a.columns(c)
 		add(func(c *ui.Context) {
 			a.pageTitle(c, "Favorites", "", func() {
-				if len(songs) > 0 && a.pillButton(c, "play-fill", "Play songs", true).Clicked() {
+				if len(songs) > 0 && a.pillButton(c, "play-fill", "Play", true).Clicked() {
 					a.player.play(songs, 0)
 				}
-				if len(songs) > 0 && a.pillButton(c, "shuffle", "Shuffle songs", false).Clicked() {
+				if len(songs) > 0 && a.pillButton(c, "shuffle", "Shuffle", false).Clicked() {
 					a.player.playShuffled(songs)
 				}
 			})

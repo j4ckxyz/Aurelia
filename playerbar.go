@@ -112,11 +112,11 @@ func (a *App) playerBar(c *ui.Context) {
 			if !tight {
 				a.deviceButton(c)
 			}
-			if a.iconButton(c, "disc-3", "The record and the lyrics", 32, 16).Disabled(song == nil).Clicked() {
+			if a.iconButton(c, "square-play", "The record and the lyrics", 32, 16).Disabled(song == nil).Clicked() {
 				a.openStage()
 			}
 			lyrics := a.router.Path() == "/lyrics"
-			if !tight && a.toggleIcon(c, "mic-vocal", "Lyrics", lyrics, 32, 16).Clicked() {
+			if !tight && a.toggleIcon(c, "text-quote", "Lyrics", lyrics, 32, 16).Clicked() {
 				if lyrics {
 					a.router.Back()
 				} else {
@@ -588,7 +588,7 @@ func (a *App) lyricsPage(c *ui.Context) {
 	p := a.pal
 	song := a.player.current()
 	if song == nil {
-		a.emptyState(c, "mic-vocal", "Nothing is playing", "Play a song to see its lyrics.")
+		a.emptyState(c, "text-quote", "Nothing is playing", "Play a song to see its lyrics.")
 		return
 	}
 	lines, known := a.lyricLines(song)
