@@ -191,12 +191,18 @@ func (s *Settings) save(d dirs) error {
 }
 
 // savedQueue is the queue as it is kept between runs: the songs by their
-// IDs, which one played, and where it was.
+// IDs, which one played, and where it was; how many after it were added,
+// the first PlayNexts of them by Play Next, and while shuffled the order
+// of the others without shuffling. Queues kept before those were have
+// none of them.
 type savedQueue struct {
-	Server   string   `json:"server"`
-	Songs    []string `json:"songs"`
-	Index    int      `json:"index"`
-	Position float64  `json:"position"` // seconds
+	Server     string   `json:"server"`
+	Songs      []string `json:"songs"`
+	Index      int      `json:"index"`
+	Position   float64  `json:"position"` // seconds
+	Added      int      `json:"added,omitempty"`
+	PlayNexts  int      `json:"playNexts,omitempty"`
+	Unshuffled []string `json:"unshuffled,omitempty"`
 }
 
 // levels are how loud normalized songs play, as Spotify has them: the

@@ -488,17 +488,14 @@ func (a *App) saveQueue() {
 		return // another device's queue is its own
 	}
 	p := a.player
-	q := savedQueue{Server: sess.ServerID + "/" + sess.UserID, Index: p.index, Position: p.state().Position.Seconds()}
-	// A queue of a whole library is kept from the song playing on.
-	const limit = 2000
-	start := 0
-	if len(p.queue) > limit {
-		start = max(0, min(p.index-10, len(p.queue)-limit))
+	q := savedQueue{Server: sess.ServerID + "/" + sess.UserID, Position: p.state().Position.Seconds()}
+	var end int
+	q.Songs, q.Index, end = keptAround(p.queue, p.index)
+	q.Added = max(0, min(p.added, end-p.index-1))
+	q.PlayNexts = min(p.playNexts, q.Added)
+	if p.unshuffled != nil {
+		q.Unshuffled, _, _ = keptAround(p.unshuffled, slices.Index(p.unshuffled, p.current()))
 	}
-	for _, s := range p.queue[start:min(len(p.queue), start+limit)] {
-		q.Songs = append(q.Songs, s.ID)
-	}
-	q.Index -= start
 	if p.current() == nil {
 		q = savedQueue{}
 	}
@@ -519,6 +516,22 @@ func (a *App) saveQueue() {
 	}()
 }
 
+// keptAround returns the IDs of the songs of a queue that are kept, with
+// where the song at i is among them and where they end in the queue: a
+// queue of a whole library is kept from the song playing on.
+func keptAround(songs []*library.Song, i int) (ids []string, at, end int) {
+	const limit = 2000
+	start := 0
+	if len(songs) > limit {
+		start = max(0, min(i-10, len(songs)-limit))
+	}
+	end = min(len(songs), start+limit)
+	for _, s := range songs[start:end] {
+		ids = append(ids, s.ID)
+	}
+	return ids, i - start, end
+}
+
 // restoreQueue brings back the queue of the last run, once the library
 // that holds its songs shows.
 func (a *App) restoreQueue() {
@@ -535,19 +548,38 @@ func (a *App) restoreQueue() {
 	if json.Unmarshal(b, &q) != nil || q.Server != sess.ServerID+"/"+sess.UserID {
 		return
 	}
+	// The song that played, or when it is gone from the library the next
+	// that is not, from its start; the last when none after it is left.
 	var songs []*library.Song
-	index := 0
+	index, added, playNexts, at := -1, 0, 0, seconds(q.Position)
 	for i, id := range q.Songs {
 		s := a.lib.Song(id)
-		if s == nil {
+		switch {
+		case s == nil:
 			continue // gone from the library
-		}
-		if i == q.Index {
+		case index < 0 && i >= q.Index:
 			index = len(songs)
+			if i != q.Index {
+				at = 0
+			}
+		case index >= 0 && i <= q.Index+q.Added:
+			added++
+			if i <= q.Index+q.PlayNexts {
+				playNexts++
+			}
 		}
 		songs = append(songs, s)
 	}
-	a.player.restore(songs, index, seconds(q.Position))
+	if index < 0 {
+		index, at = len(songs)-1, 0
+	}
+	var unshuffled []*library.Song
+	for _, id := range q.Unshuffled {
+		if s := a.lib.Song(id); s != nil {
+			unshuffled = append(unshuffled, s)
+		}
+	}
+	a.player.restore(songs, unshuffled, index, added, playNexts, at)
 }
 
 // setFavorite marks a song, an album or an artist, here at once and on
