@@ -123,6 +123,31 @@ func TestPlayOnAnotherDevice(t *testing.T) {
 		t.Errorf("mirrored: paused %v at %v, volume %d", st.Paused, st.Position, a.player.far.volume)
 	}
 
+	// Its queue is its own: the panel offers no way to change it.
+	a.settings.QueueOpen = true
+	tt.Frame()
+	wantTexts(t, tt, "NEXT UP", "Perfect", "Songs are moved and removed on Kitchen · Jellyfin Web.")
+	if tt.HasText("Clear") || a.pages.queueList.Reorder != nil {
+		t.Errorf("the device's queue can be cleared (%v) or dragged (%v)", tt.HasText("Clear"), a.pages.queueList.Reorder != nil)
+	}
+	if box, ok := tt.Find("Perfect"); ok {
+		tt.Move(box.X+4, box.Y+4)
+		tt.Frame()
+		if _, ok := tt.Find("Remove from the queue"); ok {
+			t.Error("a song of the device's queue has a button to remove it")
+		}
+		if err := tt.RightClick("Perfect"); err == nil {
+			for _, item := range tt.Menu() {
+				if item == "Remove from Queue" {
+					t.Error("a song of the device's queue has Remove in its menu")
+				}
+			}
+			tt.CloseMenu()
+		}
+	}
+	a.settings.QueueOpen = false
+	tt.Frame()
+
 	// The buttons are the device's.
 	a.player.toggle()
 	orders("play", "Playing/Unpause")

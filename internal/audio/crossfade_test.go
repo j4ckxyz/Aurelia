@@ -305,3 +305,88 @@ func TestCrossfadeLongerThanTheTrack(t *testing.T) {
 		t.Errorf("a jump of %.3f between two samples", step)
 	}
 }
+
+// heard returns what the sound card was given, without the silence before
+// and after it.
+func (te *testEngine) heard() []float32 {
+	te.sink.mu.Lock()
+	got := append([]float32(nil), te.sink.got...)
+	te.sink.mu.Unlock()
+	first, last := 0, len(got)/2
+	for first < last && got[2*first] == 0 && got[2*first+1] == 0 {
+		first++
+	}
+	for last > first && got[2*last-2] == 0 && got[2*last-1] == 0 {
+		last--
+	}
+	return got[2*first : 2*last]
+}
+
+func seconds(frames int) time.Duration {
+	return time.Duration(float64(frames) / testRate * float64(time.Second))
+}
+
+// A track skipped to while the crossfade brings it in goes on from what
+// was heard of it: its opening is not heard twice.
+func TestSkipIntoACrossfade(t *testing.T) {
+	te := newTestEngine(t)
+	a, b := te.track(t, "a", 440, 5, false), te.track(t, "b", 880, 5, false)
+	te.SetCrossfade(2 * time.Second)
+	te.Play(a, 0)
+	te.SetNext(b)
+	// Halfway through the crossfade, which begins at 3 s.
+	deadline := time.Now().Add(20 * time.Second)
+	for len(te.heard())/2 < 4*testRate {
+		if time.Now().After(deadline) {
+			t.Fatal("the first track did not play")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	te.Pause()
+	time.Sleep(20 * time.Millisecond) // a read under way ends
+	heard := te.Heard(b)
+	// The crossfade begins with a read of the decoder: at 3 s, or up to
+	// 4096 frames after.
+	want := seconds(len(te.heard())/2 - 3*testRate)
+	if d := want - heard; d < -10*time.Millisecond || d > 110*time.Millisecond {
+		t.Fatalf("heard %v of the second, want about %v", heard, want)
+	}
+	if heard < 500*time.Millisecond {
+		t.Fatalf("heard %v of the second: the crossfade had not begun", heard)
+	}
+	if other := te.Heard(a); other != 0 {
+		t.Errorf("heard %v of a track that is not faded into", other)
+	}
+
+	// Skipped to, from there: the rest of the second, and that alone.
+	te.sink.mu.Lock()
+	te.sink.got = nil
+	te.sink.mu.Unlock()
+	te.Play(b, heard)
+	te.Resume()
+	deadline = time.Now().Add(20 * time.Second)
+	for {
+		select {
+		case ev := <-te.events:
+			switch {
+			case ev.Kind == Failed:
+				t.Fatalf("a track failed: %v", ev.Err)
+			case ev.Kind == Ended && ev.TrackID == "b":
+				snd := te.heard()
+				// All of the second is heard, once: what came under the
+				// first, then the rest.
+				if total := heard + seconds(len(snd)/2); total < 4900*time.Millisecond || total > 5100*time.Millisecond {
+					t.Errorf("heard %v of a track of 5 s", total)
+				}
+				if high, low := amplitude(snd, 880, 0, 4096), amplitude(snd, 440, 0, 4096); high < 0.45 || low > 0.03 {
+					t.Errorf("after the skip: 880 Hz %.3f, 440 Hz %.3f", high, low)
+				}
+				return
+			case ev.Kind == Ended:
+				t.Fatalf("%q ended", ev.TrackID)
+			}
+		case <-time.After(time.Until(deadline)):
+			t.Fatal("the second track did not end")
+		}
+	}
+}

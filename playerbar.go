@@ -320,7 +320,7 @@ func (a *App) queuePanel(c *ui.Context) {
 			if len(pl.queue) > 0 && a.textButton(c, "Save").Clicked() {
 				a.saveQueueAsPlaylist()
 			}
-			if len(pl.queue) > pl.index+1 && pl.index >= 0 {
+			if len(pl.queue) > pl.index+1 && pl.index >= 0 && !pl.farOwns() {
 				if a.textButton(c, "Clear").Clicked() {
 					pl.clearUpcoming()
 				}
@@ -356,6 +356,12 @@ func (a *App) queuePanel(c *ui.Context) {
 			}
 			pl.move(from, start+to)
 		}
+		if pl.farOwns() {
+			// The queue is the device's, which only it changes: its songs
+			// neither drag nor go.
+			state.Reorder = nil
+			ui.Text(c, "Songs are moved and removed on "+pl.far.dev.Title()+".").FontSize(12).TextColor(p.muted).Padding(0, 18, 8).Shrink(0)
+		}
 		// A click chooses a song and a double click plays it: the list
 		// tells, so that its rows stay free to be dragged.
 		chosen := &a.pages.queueChosen
@@ -386,6 +392,7 @@ func (a *App) queueRow(c *ui.Context, s *library.Song, at int) (removed bool) {
 	p := a.pal
 	pl := a.player
 	current := at == pl.index
+	fixed := current || pl.farOwns() // what stays in the queue
 	row := ui.Row(c).Height(48).Padding(0, 8, 0, 10).Gap(10).Radius(p.radius).Margin(0, 8)
 	hovered := row.Hovered()
 	if hovered {
@@ -400,7 +407,7 @@ func (a *App) queueRow(c *ui.Context, s *library.Song, at int) (removed bool) {
 			}
 			ui.Text(c, s.Artist).FontSize(12).TextColor(p.muted).SingleLine()
 		})
-		if hovered && !current {
+		if hovered && !fixed {
 			if a.iconButton(c, "x", "Remove from the queue", 26, 14).Clicked() {
 				removed = true
 			}
@@ -412,7 +419,7 @@ func (a *App) queueRow(c *ui.Context, s *library.Song, at int) (removed bool) {
 		if !current && m.Item("Play").Chosen() {
 			pl.playIndex(at)
 		}
-		if !current && m.Item("Remove from Queue").Chosen() {
+		if !fixed && m.Item("Remove from Queue").Chosen() {
 			removed = true
 		}
 		a.songMenu(m, s)

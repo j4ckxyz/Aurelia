@@ -9,6 +9,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"aurelia/internal/audio"
+	"aurelia/internal/library"
 )
 
 // newServer starts a server for the test.
@@ -19,15 +22,12 @@ func newServer(t *testing.T, h http.Handler) *httptest.Server {
 }
 
 // feed plays a song for secs seconds of the scrobbler's clock, a second at
-// a time, and returns what it asked for.
-func feed(sc *scrobbler, at *time.Time, id string, dur time.Duration, from time.Duration, secs int, playing bool) (acts []scrobbleAct) {
+// a time, as the start-th song the player began, and returns what it
+// asked for.
+func feed(sc *scrobbler, at *time.Time, id string, start int, dur time.Duration, secs int, playing bool) (acts []scrobbleAct) {
 	for i := 0; i < secs; i++ {
 		*at = at.Add(time.Second)
-		pos := from + time.Duration(i+1)*time.Second
-		if !playing {
-			pos = from
-		}
-		if act := sc.step(*at, id, dur, pos, playing); act != scrobbleNothing {
+		if act := sc.step(*at, id, start, dur, playing); act != scrobbleNothing {
 			acts = append(acts, act)
 		}
 	}
@@ -37,15 +37,15 @@ func feed(sc *scrobbler, at *time.Time, id string, dur time.Duration, from time.
 func TestScrobbleCountsHalfTheSong(t *testing.T) {
 	var sc scrobbler
 	now := time.Now()
-	acts := feed(&sc, &now, "a", 200*time.Second, 0, 99, true)
+	acts := feed(&sc, &now, "a", 0, 200*time.Second, 99, true)
 	if len(acts) != 1 || acts[0] != scrobbleStarted {
 		t.Fatalf("in the first half the acts were %v, want the start only", acts)
 	}
-	acts = feed(&sc, &now, "a", 200*time.Second, 99*time.Second, 5, true)
+	acts = feed(&sc, &now, "a", 0, 200*time.Second, 5, true)
 	if len(acts) != 1 || acts[0] != scrobbleHeard {
 		t.Errorf("past half the acts were %v, want it heard once", acts)
 	}
-	if acts = feed(&sc, &now, "a", 200*time.Second, 104*time.Second, 50, true); len(acts) != 0 {
+	if acts = feed(&sc, &now, "a", 0, 200*time.Second, 50, true); len(acts) != 0 {
 		t.Errorf("sent again: %v", acts)
 	}
 }
@@ -53,8 +53,8 @@ func TestScrobbleCountsHalfTheSong(t *testing.T) {
 func TestScrobbleFourMinutesOfALongSong(t *testing.T) {
 	var sc scrobbler
 	now := time.Now()
-	feed(&sc, &now, "long", 20*time.Minute, 0, 239, true)
-	if acts := feed(&sc, &now, "long", 20*time.Minute, 239*time.Second, 2, true); len(acts) != 1 || acts[0] != scrobbleHeard {
+	feed(&sc, &now, "long", 0, 20*time.Minute, 239, true)
+	if acts := feed(&sc, &now, "long", 0, 20*time.Minute, 2, true); len(acts) != 1 || acts[0] != scrobbleHeard {
 		t.Errorf("at four minutes the acts were %v", acts)
 	}
 }
@@ -63,8 +63,8 @@ func TestScrobbleSkippedAndShortSongs(t *testing.T) {
 	var sc scrobbler
 	now := time.Now()
 	// Skipped after twenty seconds: the start was told, the play is not.
-	acts := feed(&sc, &now, "a", 200*time.Second, 0, 20, true)
-	acts = append(acts, feed(&sc, &now, "b", 200*time.Second, 0, 20, true)...)
+	acts := feed(&sc, &now, "a", 0, 200*time.Second, 20, true)
+	acts = append(acts, feed(&sc, &now, "b", 1, 200*time.Second, 20, true)...)
 	for _, a := range acts {
 		if a == scrobbleHeard {
 			t.Error("a song skipped early was counted")
@@ -75,7 +75,7 @@ func TestScrobbleSkippedAndShortSongs(t *testing.T) {
 	}
 	// Under thirty seconds long never counts.
 	sc = scrobbler{}
-	for _, a := range feed(&sc, &now, "jingle", 20*time.Second, 0, 20, true) {
+	for _, a := range feed(&sc, &now, "jingle", 0, 20*time.Second, 20, true) {
 		if a == scrobbleHeard {
 			t.Error("a song under thirty seconds was counted")
 		}
@@ -85,9 +85,9 @@ func TestScrobbleSkippedAndShortSongs(t *testing.T) {
 func TestScrobbleCountsOnlyWhatPlays(t *testing.T) {
 	var sc scrobbler
 	now := time.Now()
-	feed(&sc, &now, "a", 100*time.Second, 0, 30, true)
+	feed(&sc, &now, "a", 0, 100*time.Second, 30, true)
 	// Paused for ten minutes: nothing is heard.
-	if acts := feed(&sc, &now, "a", 100*time.Second, 30*time.Second, 600, false); len(acts) != 0 {
+	if acts := feed(&sc, &now, "a", 0, 100*time.Second, 600, false); len(acts) != 0 {
 		t.Errorf("paused: %v", acts)
 	}
 	if sc.played > 31*time.Second {
@@ -95,7 +95,7 @@ func TestScrobbleCountsOnlyWhatPlays(t *testing.T) {
 	}
 	// A window that stopped for a minute adds no more than three seconds.
 	now = now.Add(time.Minute)
-	sc.step(now, "a", 100*time.Second, 31*time.Second, true)
+	sc.step(now, "a", 0, 100*time.Second, true)
 	if sc.played > 35*time.Second {
 		t.Errorf("a stall counted for %v", sc.played)
 	}
@@ -104,8 +104,8 @@ func TestScrobbleCountsOnlyWhatPlays(t *testing.T) {
 func TestScrobbleRepeatCountsAgain(t *testing.T) {
 	var sc scrobbler
 	now := time.Now()
-	feed(&sc, &now, "a", 60*time.Second, 0, 40, true) // heard, and sent
-	acts := feed(&sc, &now, "a", 60*time.Second, 0, 40, true)
+	feed(&sc, &now, "a", 0, 60*time.Second, 40, true) // heard, and sent
+	acts := feed(&sc, &now, "a", 1, 60*time.Second, 40, true)
 	var started, heard int
 	for _, a := range acts {
 		if a == scrobbleStarted {
@@ -116,6 +116,42 @@ func TestScrobbleRepeatCountsAgain(t *testing.T) {
 	}
 	if started != 1 || heard != 1 {
 		t.Errorf("a song played again: started %d, heard %d", started, heard)
+	}
+}
+
+// A seek back, however far, is the same listen: only a song begun again
+// is another.
+func TestScrobbleSeekBackIsTheSameListen(t *testing.T) {
+	a := testApp(t)
+	p := a.player
+	p.play([]*library.Song{a.lib.Song("s1"), a.lib.Song("s2"), a.lib.Song("s3")}, 1)
+	start := p.starts
+	p.seek(0)
+	p.seek(90 * time.Second)
+	if p.starts != start {
+		t.Errorf("a seek began the song again: %d, then %d", start, p.starts)
+	}
+	p.previous() // barely begun: the song before
+	if p.starts != start+1 || p.current().ID != "s1" {
+		t.Errorf("Previous: %d songs begun, playing %s", p.starts-start, p.current().ID)
+	}
+	p.previous() // the first: from its start again
+	if p.starts != start+2 || p.current().ID != "s1" {
+		t.Errorf("Previous on the first: %d songs begun, playing %s", p.starts-start, p.current().ID)
+	}
+	p.onEvent(audio.Event{Kind: audio.Ended, TrackID: "s1"})
+	if p.starts != start+3 {
+		t.Errorf("the next song: %d songs begun", p.starts-start)
+	}
+
+	var sc scrobbler
+	now := time.Now()
+	feed(&sc, &now, "a", 4, 60*time.Second, 40, true) // heard, and sent
+	if acts := feed(&sc, &now, "a", 4, 60*time.Second, 40, true); len(acts) != 0 {
+		t.Errorf("after a seek back to the start: %v", acts)
+	}
+	if acts := feed(&sc, &now, "a", 5, 60*time.Second, 40, true); len(acts) != 2 {
+		t.Errorf("begun again: %v", acts)
 	}
 }
 
