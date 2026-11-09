@@ -43,6 +43,9 @@ type player struct {
 	next      *audio.Track // what the engine plays after it
 	nextIndex int
 	failures  int
+	// starts counts the times a song began to play, or began again: the
+	// scrobbler tells a new listen from a seek back by it.
+	starts int
 
 	// far is the device that plays in this computer's place, nil while
 	// it plays itself (remote.go).
@@ -244,7 +247,14 @@ func (p *player) playIndex(i int) {
 		return
 	}
 	p.reportStop()
+	// The song a crossfade has begun to bring in goes on from what was
+	// heard of it, not from its start again.
+	fading := p.next
+	if p.nextIndex != i {
+		fading = nil
+	}
 	p.index, p.finished, p.paused, p.cold = i, false, false, false
+	p.starts++
 	song := p.queue[i]
 	p.track = p.trackOf(song)
 	p.next, p.nextIndex = nil, -1
@@ -255,7 +265,7 @@ func (p *player) playIndex(i int) {
 		return
 	}
 	p.engine.Resume()
-	p.engine.Play(p.track, 0)
+	p.engine.Play(p.track, p.engine.Heard(fading))
 	p.reportStart()
 	p.armNext()
 	p.app.saveQueue()
@@ -319,6 +329,7 @@ func (p *player) onEvent(ev audio.Event) {
 		p.index, p.track = p.nextIndex, p.next
 		p.next, p.nextIndex = nil, -1
 		p.failures = 0
+		p.starts++
 		p.reportStart()
 		p.armNext()
 		p.app.saveQueue()
@@ -453,6 +464,7 @@ func (p *player) previous() {
 		return
 	}
 	if p.state().Position > 3*time.Second || p.index == 0 {
+		p.starts++ // played again, which a seek is not
 		p.seek(0)
 		return
 	}
@@ -479,7 +491,9 @@ func (p *player) seek(to time.Duration) {
 		return
 	}
 	if p.finished {
+		// It ended: it plays again.
 		p.finished, p.paused = false, false
+		p.starts++
 		p.engine.Resume()
 		p.engine.Play(p.track, to)
 		p.reportStart()
