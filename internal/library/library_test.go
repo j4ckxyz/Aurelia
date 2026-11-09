@@ -2,6 +2,9 @@ package library
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,6 +90,59 @@ func TestSearch(t *testing.T) {
 	}
 	if r := l.Search("zzz", Limits{}); !r.Empty() {
 		t.Error("zzz found something")
+	}
+}
+
+// Whose a playlist is: the server's answer, and what "not found" means on
+// a server that shares playlists and on one older.
+func TestPlaylistOwners(t *testing.T) {
+	serve := func(version string) *jellyfin.Client {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/System/Info/Public":
+				if version == "" {
+					http.Error(w, "down", http.StatusBadGateway)
+					return
+				}
+				fmt.Fprintf(w, `{"Id":"srv","ServerName":"Test","Version":%q}`, version)
+			case "/Playlists/mine/Users":
+				w.Write([]byte(`[]`))
+			case "/Playlists/theirs/Users":
+				w.WriteHeader(http.StatusForbidden)
+			case "/Playlists/public/Users":
+				http.Error(w, "Playlist not found", http.StatusNotFound)
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		return jellyfin.New(jellyfin.Session{Server: srv.URL, UserID: "u", Token: "t"})
+	}
+	ids := []string{"mine", "theirs", "public", "broken"}
+	for _, tc := range []struct {
+		version string
+		want    map[string]Owner
+	}{
+		{"10.10.7", map[string]Owner{"mine": OwnerSelf, "theirs": OwnerOther, "public": OwnerOther, "broken": OwnerUnknown}},
+		// Older servers know nothing of the question, and show the user
+		// only their own.
+		{"10.8.13", map[string]Owner{"mine": OwnerSelf, "theirs": OwnerOther, "public": OwnerSelf, "broken": OwnerUnknown}},
+		// A server that does not say what it is: "not found" tells nothing.
+		{"", map[string]Owner{"mine": OwnerSelf, "theirs": OwnerOther, "public": OwnerUnknown, "broken": OwnerUnknown}},
+	} {
+		got := PlaylistOwners(context.Background(), serve(tc.version), ids)
+		for _, id := range ids {
+			if got[id] != tc.want[id] {
+				t.Errorf("of version %q, %s is %v, want %v", tc.version, id, got[id], tc.want[id])
+			}
+		}
+	}
+	// The playlists are made with what was found.
+	it := jellyfin.Item{ID: "p", Name: "Mix", ChildCount: 3}
+	for _, o := range []Owner{OwnerSelf, OwnerOther, OwnerUnknown} {
+		if pl := PlaylistOf(&it, o); pl.Owner() != o || pl.Songs != 3 {
+			t.Errorf("a playlist of %v is %+v", o, pl)
+		}
 	}
 }
 

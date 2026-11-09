@@ -19,6 +19,7 @@ type pageStates struct {
 	albums, added sorted[*library.Album]
 	artistList    sorted[*library.Artist]
 	playlists     sorted[*library.Playlist]
+	playlistNotes map[string]string // of those shown that share a name
 	topArtists    sorted[*library.Artist]
 	songs, titles sorted[*library.Song]
 	rows          map[string]*rowList
@@ -877,6 +878,7 @@ func (a *App) playlists() []*library.Playlist {
 				s.list = append(s.list, pl)
 			}
 		}
+		a.pages.playlistNotes = playlistNotes(s.list)
 	}
 	return s.list
 }
@@ -941,15 +943,7 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 		}
 		done = true
 	}
-	// The library's own songs, where it has them: a favorite set here
-	// shows everywhere.
-	songs := make([]*library.Song, len(fetched))
-	for i, s := range fetched {
-		songs[i] = s
-		if own := a.lib.Song(s.ID); own != nil {
-			songs[i] = own
-		}
-	}
+	songs := a.librarySongs(fetched)
 	rows := a.rows(c, "/playlist/"+id, fmt.Sprint(done, len(songs), a.pages.fetchErr[key], a.pages.reordered), func(add func(func(c *ui.Context))) {
 		add(func(c *ui.Context) {
 			h := hero{
@@ -966,24 +960,9 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 					}
 				},
 			}
-			if !pl.Others {
-				h.menu = func(m *ui.Menu) {
-					if m.Item("Rename…").Chosen() {
-						a.renamePlaylist(pl)
-					}
-					if m.Item("Delete Playlist…").Chosen() {
-						a.deletePlaylist(pl)
-					}
-				}
-			}
-			if prev := h.menu; true {
-				h.menu = func(m *ui.Menu) {
-					if prev != nil {
-						prev(m)
-						m.Separator()
-					}
-					a.pinMenu(m, "playlist", pl.ID, pl.Name)
-				}
+			h.menu = func(m *ui.Menu) {
+				a.playlistEditMenu(m, pl)
+				a.pinMenu(m, "playlist", pl.ID, pl.Name)
 			}
 			if len(songs) > 0 {
 				h.play = func() { a.player.play(songs, 0) }
@@ -1010,7 +989,11 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 			})
 		case len(songs) == 0:
 			add(func(c *ui.Context) {
-				a.emptyState(c, "list-music", "This playlist is empty", "Add songs to it in Jellyfin.")
+				detail := "Right-click a song, or an album, and choose Add to Playlist."
+				if pl.Others {
+					detail = "Nothing has been added to it yet."
+				}
+				a.emptyState(c, "list-music", "This playlist is empty", detail)
 			})
 		default:
 			add(func(c *ui.Context) { a.listHeader(c, "", true) })
@@ -1031,7 +1014,7 @@ func (a *App) playlistPage(c *ui.Context, r *ui.Route) {
 								a.moveInPlaylist(pl, entry, i+1)
 							}
 							if m.Item("Remove from This Playlist").Chosen() {
-								a.removeFromPlaylist(pl, entry)
+								a.removeFromPlaylist(pl, entry, i)
 							}
 							m.Separator()
 						}

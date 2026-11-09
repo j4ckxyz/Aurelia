@@ -105,6 +105,8 @@ type App struct {
 	desk desktopState
 	// prompt is a question the user answers.
 	prompt promptState
+	// picker finds a playlist to add songs to.
+	picker pickerState
 	// info is the dialog of a song's details.
 	info infoState
 	// share is the picture being made of a song or an album.

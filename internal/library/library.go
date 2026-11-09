@@ -95,6 +95,11 @@ type Playlist struct {
 	// Others marks a playlist that is not the user's own: one another
 	// person of the server made public.
 	Others bool `json:"others,omitempty"`
+	// Unsure marks a playlist the server did not say whose it is, when
+	// asked. It shows with the user's own, since hiding one of theirs is
+	// worse than showing one of another's, but it is not deleted from
+	// here: the server lets an administrator delete anyone's.
+	Unsure bool `json:"unsure,omitempty"`
 
 	nameKey string
 }
@@ -374,10 +379,14 @@ func Sync(ctx context.Context, c *jellyfin.Client, progress func(Progress), part
 		}()
 	}
 	run(func() (err error) { artists, err = c.AlbumArtists(ctx); return })
-	var others map[string]bool
+	var owners map[string]Owner
 	run(func() (err error) {
 		if playlists, err = c.Playlists(ctx); err == nil {
-			others = othersPlaylists(ctx, c, playlists)
+			ids := make([]string, len(playlists))
+			for i := range playlists {
+				ids[i] = playlists[i].ID
+			}
+			owners = PlaylistOwners(ctx, c, ids)
 		}
 		return
 	})
@@ -400,8 +409,8 @@ func Sync(ctx context.Context, c *jellyfin.Client, progress func(Progress), part
 		}
 		d.Artists = append(d.Artists, a)
 	}
-	for _, it := range playlists {
-		d.Playlists = append(d.Playlists, Playlist{ID: it.ID, Name: it.Name, ImageTag: it.ImageTags["Primary"], Songs: it.ChildCount, Others: others[it.ID]})
+	for i := range playlists {
+		d.Playlists = append(d.Playlists, PlaylistOf(&playlists[i], owners[playlists[i].ID]))
 	}
 	seen := map[string]bool{}
 	for _, p := range albumPages {
@@ -511,27 +520,82 @@ func PrepareSong(s *Song) {
 	s.SortKey, s.ArtistKey, s.AlbumKey = s.nameKey, sortKey(s.Artist), sortKey(s.Album)
 }
 
-// othersPlaylists finds the playlists that are not the user's own, a few
-// at a time. One the server tells nothing of counts as the user's.
-func othersPlaylists(ctx context.Context, c *jellyfin.Client, playlists []jellyfin.Item) map[string]bool {
-	others := map[string]bool{}
-	var mu sync.Mutex
+// Owner is whose a playlist is, as far as the server tells.
+type Owner uint8
+
+const (
+	// OwnerUnknown: the server told neither way, as when it failed.
+	OwnerUnknown Owner = iota
+	OwnerSelf
+	OwnerOther
+)
+
+// Owner returns whose the playlist is, as was found.
+func (p *Playlist) Owner() Owner {
+	switch {
+	case p.Others:
+		return OwnerOther
+	case p.Unsure:
+		return OwnerUnknown
+	}
+	return OwnerSelf
+}
+
+// PlaylistOf converts a playlist of the server's, whose owner was found.
+func PlaylistOf(it *jellyfin.Item, o Owner) Playlist {
+	return Playlist{ID: it.ID, Name: it.Name, ImageTag: it.ImageTags["Primary"], Songs: it.ChildCount,
+		Others: o == OwnerOther, Unsure: o == OwnerUnknown}
+}
+
+// PlaylistOwners asks the server whose playlists are, a few at a time.
+//
+// A server that shares playlists tells who one is shared with to its owner,
+// refuses others, and answers "not found" to those it does not count it
+// for, as one another made public. An older server answers "not found" to
+// everyone, but shows a user only their own playlists: there, a playlist
+// is the user's. Where the server cannot be told apart, or does not
+// answer, the owner stays unknown, for the caller to show the playlist
+// without taking it for the user's.
+func PlaylistOwners(ctx context.Context, c *jellyfin.Client, ids []string) map[string]Owner {
+	owners := make(map[string]Owner, len(ids))
+	if len(ids) == 0 {
+		return owners
+	}
+	answers := make([]jellyfin.PlaylistOwner, len(ids))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
-	for i := range playlists {
-		id := playlists[i].ID
+	for i, id := range ids {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			if own, known := c.PlaylistIsOwn(ctx, id); known && !own {
-				mu.Lock()
-				others[id] = true
-				mu.Unlock()
-			}
+			answers[i] = c.PlaylistOwner(ctx, id)
 		}()
 	}
 	wg.Wait()
-	return others
+	// What "not found" means is asked of the server once, and only when it
+	// was answered.
+	notFound := OwnerUnknown
+	if slices.Contains(answers, jellyfin.PlaylistNotFound) {
+		if shares, err := c.SharesPlaylists(ctx); err == nil {
+			notFound = OwnerSelf
+			if shares {
+				notFound = OwnerOther
+			}
+		}
+	}
+	for i, id := range ids {
+		switch answers[i] {
+		case jellyfin.PlaylistOwnerSelf:
+			owners[id] = OwnerSelf
+		case jellyfin.PlaylistOwnerOther:
+			owners[id] = OwnerOther
+		case jellyfin.PlaylistNotFound:
+			owners[id] = notFound
+		default:
+			owners[id] = OwnerUnknown
+		}
+	}
+	return owners
 }

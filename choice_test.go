@@ -130,6 +130,10 @@ func TestMenuOfSongsChosen(t *testing.T) {
 	if err := tt.ChooseMenuItem("Add to Playlist", "Road trip"); err != nil {
 		t.Fatalf("%v; the menu: %q", err, tt.Menu())
 	}
+	// Both are in Road trip already: the app asks first.
+	wait(t, a, "the question", func() bool { return a.prompt.open })
+	tt.Frame()
+	click(t, tt, "Add Anyway")
 	if got := ps.waitFor(t, a, "POST /Playlists/p1/Items"); !strings.Contains(got, "ids="+songs[0].ID+"%2C"+songs[1].ID) {
 		t.Errorf("the request was %q", got)
 	}
@@ -182,6 +186,9 @@ func TestDragSongs(t *testing.T) {
 	from := find(t, tt, songs[1].Name)
 	to := find(t, tt, "Road trip") // the sidebar's
 	dragTo(tt, from.X+4, from.Y+from.H/2, to.X+4, to.Y+to.H/2)
+	wait(t, a, "the question", func() bool { return a.prompt.open }) // in it already
+	tt.Frame()
+	click(t, tt, "Add Anyway")
 	if got := ps.waitFor(t, a, "POST /Playlists/p1/Items"); !strings.Contains(got, "ids="+songs[0].ID+"%2C"+songs[1].ID) {
 		t.Errorf("the request was %q", got)
 	}
