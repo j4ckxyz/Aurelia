@@ -1,5 +1,34 @@
 # Changes
 
+## 0.4.0
+
+- Play plays in order: an album, a playlist or a list plays as it is,
+  and only Shuffle shuffles. A song chosen in search plays, then music
+  like it, not the other results.
+- A queue like Spotify's: songs added with Play Next and Add to Queue
+  play right after the song playing, ahead of the rest of the album,
+  under their own heading in the queue. Shuffling on and off keeps them,
+  and keeps songs moved by hand; the order comes back after a restart,
+  and Previous still goes back once shuffled. Clear can be undone.
+- The music goes on past a song that will not load, rather than
+  stopping; Play after the music stopped plays on from the song after.
+  Next in a crossfade goes on with the song coming in, rather than
+  starting it again. A seek back is no longer scrobbled twice.
+- Choose several songs with a click, Shift and Cmd (Ctrl), and play,
+  queue, like, download or add them to a playlist at once; drag them to
+  a playlist in the sidebar or to the queue; drag songs of a playlist to
+  another place in it.
+- Search leads with its top result beside the best songs; Enter plays
+  it, and Down takes the keyboard into the results.
+- Playlists: others' mixes are no longer taken for yours; playlists of
+  one name say how they differ; a menu on playlists in the sidebar and on
+  tiles; Add to Playlist reaches every playlist, with a search, and asks
+  before adding a song twice; removing a song can be undone.
+- The playing song's row pauses under the pointer rather than starting
+  again. Favorites has Play and a choice of order; the heart says what it
+  did. Remove all downloads asks first. Home's Show all keeps your order
+  of albums, and pages keep their place longer.
+
 ## 0.3.0
 
 - An equalizer: ten bands and a preamp, presets and your own, heard as a

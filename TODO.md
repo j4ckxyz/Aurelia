@@ -21,6 +21,40 @@ little kept on disk.
 
 ## To do
 
+### Playing like Spotify
+
+Built in 0.4.0, with tests for each; not yet seen running in the app,
+so each stays here until it is.
+
+- [ ] Play plays in order, only Shuffle shuffles; a song from search
+      plays, then music like it.
+- [ ] Songs added play next, under "Next in queue"; shuffling keeps them
+      and the order moved by hand; the order kept over a restart; Clear
+      undone.
+- [ ] The music goes on past a song that will not load; Play after it
+      stopped plays on; Next in a crossfade goes on with the song coming
+      in; a seek back is not scrobbled again; the queue of another
+      device offers no edits it would ignore.
+- [ ] Several songs chosen, with their menu; dragged to a playlist, the
+      queue, or another place in a playlist.
+- [ ] Search's top result, Enter and Down.
+- [ ] Playlists: others' not taken for yours, names told apart, menus,
+      the picker, asking before adding twice, undoing a removal.
+- [ ] The playing row's pause, Favorites' Play and order, the heart's
+      toast, Remove all asking, Show all keeping the order, places kept.
+
+### Found on the way
+
+- [ ] Search's shortcuts ("/" and Cmd+K) focus the field's box, not its
+      text, so typing goes nowhere: `ui.SearchField`'s `Focus` in mygo.
+- [ ] A FLAC of more than two channels plays only its front left and
+      right (`flacDecoder.Read` reads subframes 0 and 1): mix it down.
+- [ ] Spatial audio on macOS through Apple's own renderer (personalized,
+      head tracked, set in Control Center): output by
+      AVSampleBufferAudioRenderer, which spatializes stereo, or the
+      SpatialMixer audio unit; both found working on this Mac from Go.
+      Dolby Atmos itself needs Dolby's licence and is not planned.
+
 ### Quick animations across the app
 
 - [ ] Short, light animations so that the app does not feel bland, none
