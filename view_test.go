@@ -294,6 +294,72 @@ func TestSearchKeys(t *testing.T) {
 	}
 }
 
+// The keys that go to search put the keyboard in the field's text, where
+// what is typed searches, and Up from the top of what it found comes back.
+func TestSearchShortcut(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1240, 800)
+	typeKeys := func(s string) {
+		for _, r := range s {
+			tt.TypeKey(0, ui.KeyA+ui.Key(r-'a'), string(r))
+		}
+	}
+	// Whether a text input has the keyboard: the search page is titled
+	// Search too, so Focused("Search") would not tell.
+	typing := func() bool { _, ok := tt.TextCaret(); return ok }
+	tt.Key(0, ui.KeySlash)
+	if !typing() {
+		t.Fatal("/ did not put the keyboard in the search field")
+	}
+	// Letters type, not move: L and K are the marker's keys too.
+	typeKeys("light")
+	if a.search.query != "light" || a.router.Location() != "/search?q=light" {
+		t.Fatalf("after / and typing: the field holds %q, at %s", a.search.query, a.router.Location())
+	}
+	wantTexts(t, tt, "Nothing found for “light”")
+
+	// From another page, with the keyboard elsewhere.
+	click(t, tt, "Albums")
+	if a.search.query != "" || typing() {
+		t.Fatalf("on Albums: the field holds %q, focused %v", a.search.query, typing())
+	}
+	tt.Key(primary, ui.KeyK)
+	typeKeys("perf")
+	if a.search.query != "perf" || a.router.Location() != "/search?q=perf" {
+		t.Fatalf("after %v K and typing: the field holds %q, at %s", primary, a.search.query, a.router.Location())
+	}
+	wantTexts(t, tt, "Top result", "Perfect")
+
+	// Down goes to the top result, and Up from there back to the field.
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	cu := &a.cursor
+	if !cu.shown || typing() {
+		t.Fatalf("after Down: the marker shows %v, the field focused %v", cu.shown, typing())
+	}
+	tt.Key(0, ui.KeyUp)
+	tt.Frame()
+	if cu.shown || !typing() {
+		t.Fatalf("after Up from the top result: the marker shows %v, the field focused %v", cu.shown, typing())
+	}
+	typeKeys("ect")
+	if a.search.query != "perfect" {
+		t.Errorf("typing after Up: the field holds %q", a.search.query)
+	}
+	// Escape empties it, and the keyboard stays.
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.search.query != "" || !typing() {
+		t.Errorf("after Escape: the field holds %q, focused %v", a.search.query, typing())
+	}
+	// So does its button.
+	typeKeys("ed")
+	click(t, tt, "Clear")
+	if a.search.query != "" || !typing() {
+		t.Errorf("after Clear: the field holds %q, focused %v", a.search.query, typing())
+	}
+}
+
 // Playing fills the queue from the song chosen, and the queue's buttons
 // move through it.
 func TestQueue(t *testing.T) {
