@@ -40,6 +40,7 @@ func (a *App) frame(c *ui.Context) {
 	}
 	c.SetTheme(a.pal.widgets)
 	a.applyAppearance()
+	a.followTheme()
 	root := c.Root().Background(a.pal.bg).TextColor(a.pal.text)
 	// Theme files dropped on the window are imported.
 	if files := root.DroppedFiles(); len(files) > 0 {

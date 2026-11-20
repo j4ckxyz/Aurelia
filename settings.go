@@ -293,10 +293,12 @@ func (a *App) settingsPage(c *ui.Context) {
 			a.card(c, func() {
 				a.setting(c, "Icon in the "+trayName(), "Shows the song and its buttons from the "+trayName()+"; closing the window leaves the music playing.", func() {
 					if ui.Switch(c.Key("tray"), &a.settings.Tray).Label("Icon in the " + trayName()).Changed() {
-						a.saveSettings()
-						a.told = "" // so that the next frame draws it
+						a.trayChanged()
 					}
 				})
+				if a.settings.Tray {
+					a.traySettings(c)
+				}
 				a.setting(c, "Notify of the song", "A notification as the song changes, while Aurelia is not the window in front.", func() {
 					if ui.Switch(c.Key("notify"), &a.settings.Notify).Label("Notify of the song").Changed() {
 						a.saveSettings()

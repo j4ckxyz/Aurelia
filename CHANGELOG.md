@@ -1,5 +1,19 @@
 # Changes
 
+## 0.6.0
+
+- The icon in the menu bar or the tray, as you like it (Settings ▸
+  Desktop, with a picture of how it looks): Aurelia's icon in the menu
+  bar's own color, the theme's, Sea glass, Lavender, Gold, Rose, Sky,
+  white or black; or the cover of the song playing. Beside it, the song,
+  or the song and the artist: in macOS's menu bar, and in the panels of
+  GNOME (with its AppIndicator extension), Ubuntu, Xfce, Cinnamon, MATE
+  and Budgie. Windows and KDE Plasma show the song when you point at the
+  icon. The theme's color follows the theme as it changes.
+- The queue kept for the next run is always the latest: two saves close
+  together could be written in the wrong order, and an older queue come
+  back.
+
 ## 0.5.1
 
 - V types a V again in every field, the sign-in's too: on Linux and
