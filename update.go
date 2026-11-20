@@ -210,9 +210,7 @@ func (a *App) updatePage(c *ui.Context) {
 	}
 	bar := c.TitleBar()
 	ui.Column(c).Fill().LinearGradient(ui.LinearGradient{From: p.accent.Alpha(0.2), To: p.accent.Alpha(0), Angle: 180, End: 0.6, Oklab: true}).Children(func() {
-		ui.Row(c).Height(max(bar.Height, topBarH)).DragWindow().Justify(ui.End).Padding(0, 12).Children(func() {
-			a.windowControls(c)
-		})
+		ui.Row(c).Height(max(bar.Height, topBarH)).DragWindow()
 		ui.Column(c).Grow(1).MinHeight(0).Center().Padding(8, 24, 40).Children(func() {
 			ui.Column(c).Width(480).MaxHeightPercent(100).Gap(18).AlignItems(ui.Stretch).Children(func() {
 				ui.Column(c).AlignItems(ui.Center).Gap(8).Shrink(0).Children(func() {

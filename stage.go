@@ -150,10 +150,13 @@ func (a *App) popOut() {
 		BackgroundColor: "#08080a",
 		Content:         ui.View(a.miniView),
 	}
-	switch {
-	case runtime.GOOS == "darwin":
+	// A small window of its own buttons, as the system's own pictures
+	// in pictures are: on Windows without a frame; on macOS with the
+	// traffic lights over it.
+	switch runtime.GOOS {
+	case "darwin":
 		opts.TitleBarStyle = mygo.TitleBarHidden
-	case ownControls:
+	case "windows":
 		opts.Frameless = true
 	}
 	win := mygo.NewWindow(opts)
@@ -304,11 +307,15 @@ func (a *App) stageButtons(c *ui.Context, song *library.Song) {
 		b.Children(func() { ui.Icon(c, icon(name)).Size(glyph, glyph).TextColor(fg) })
 		return b
 	}
-	top := float32(14)
+	top, right := float32(14), float32(14)
 	if bar := c.TitleBar(); bar.Height > 0 && !st.mini {
 		top = max(top, (bar.Height-34)/2)
+		if bar.Right > 0 {
+			// Clear of the system's buttons at the right of the window.
+			right += bar.Right
+		}
 	}
-	ui.Row(c).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(top).Right(14).Gap(4).Padding(3).Radius(20).
+	ui.Row(c).Attach(ui.AnchorTopRight, ui.AnchorTopRight).Top(top).Right(right).Gap(4).Padding(3).Radius(20).
 		Background(ui.RGBA(20, 20, 24, 0.6)).Children(func() {
 		switch {
 		case st.mini:

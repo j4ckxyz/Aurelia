@@ -24,9 +24,7 @@ func (a *App) loginPage(c *ui.Context) {
 	f := &a.login
 	bar := c.TitleBar()
 	ui.Column(c).Fill().Children(func() {
-		ui.Row(c).Height(max(bar.Height, topBarH)).DragWindow().Justify(ui.End).Padding(0, 12).Children(func() {
-			a.windowControls(c)
-		})
+		ui.Row(c).Height(max(bar.Height, topBarH)).DragWindow()
 		ui.Column(c).Grow(1).Center().Padding(24).Children(func() {
 			ui.Column(c).Width(360).Gap(14).AlignItems(ui.Stretch).Children(func() {
 				ui.Column(c).AlignItems(ui.Center).Gap(8).Margin(0, 0, 10).Children(func() {

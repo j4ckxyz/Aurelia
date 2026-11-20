@@ -44,8 +44,15 @@ type App struct {
 	// systemDark is the system's appearance, which "Match system"
 	// follows.
 	systemDark bool
-	pal        *palette
-	palFor     string // the theme the palette is of, and its appearance
+	// appearance is what the system's own parts of the window (its
+	// buttons, menus and dialogs) were last told to look like: the
+	// theme's light or dark, or the system's.
+	appearance mygo.ThemeSource
+	// native is set in the app itself, where there is a system to draw
+	// windows, menus and dialogs; tests have none.
+	native bool
+	pal    *palette
+	palFor string // the theme the palette is of, and its appearance
 	// editing is the theme being edited, which shows as it changes.
 	editing *themeEditor
 
