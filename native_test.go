@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -105,5 +106,27 @@ func TestAppMenu(t *testing.T) {
 	tt.Frame()
 	if a.router.Path() != "/albums" {
 		t.Errorf("View ▸ Albums went to %q", a.router.Path())
+	}
+}
+
+// The menu bar takes no key without a modifier: it would take it from a
+// field being typed in, on every page.
+func TestMenuTakesNoPlainKeys(t *testing.T) {
+	for i := range commands {
+		cmd := &commands[i]
+		if cmd.menu == "" {
+			continue
+		}
+		accel := menuAccelerator(cmd)
+		if accel != "" && !strings.Contains(accel, "+") {
+			t.Errorf("%s: the menu bar takes %q from what is typed", cmd.id, accel)
+		}
+	}
+	for _, id := range []string{"record", "toggle"} {
+		for i := range commands {
+			if commands[i].id == id && menuAccelerator(&commands[i]) != "" {
+				t.Errorf("%s has a menu accelerator", id)
+			}
+		}
 	}
 }
