@@ -217,3 +217,31 @@ func TestQueueComesBackPastAGoneSong(t *testing.T) {
 		t.Errorf("came back at %d, from %v", p.index, p.state().Position)
 	}
 }
+
+// Saves made one after the other end with the last on disk, whichever of
+// their writes runs last.
+func TestQueueSavesInOrder(t *testing.T) {
+	a := albumApp(t)
+	songs := a.lib.AlbumSongs("al9")
+	for i := range 100 {
+		// The writes wait together, and then go in any order.
+		a.queueMu.Lock()
+		a.player.play(songs, 0)
+		a.saveQueue()
+		a.player.play(songs, 1+i%5)
+		a.saveQueue()
+		a.queueMu.Unlock()
+		a.queueWrites.Wait()
+		b, err := os.ReadFile(a.dirs.queueFile())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var q savedQueue
+		if err := json.Unmarshal(b, &q); err != nil {
+			t.Fatal(err)
+		}
+		if q.Index != 1+i%5 {
+			t.Fatalf("after %d, the queue on disk is at %d, an older save's", i, q.Index)
+		}
+	}
+}

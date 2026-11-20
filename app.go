@@ -149,9 +149,12 @@ type App struct {
 	lyrics     lyricsState
 	details    map[string]*detail // what the server tells of artists, by ID
 
-	queueMu       sync.Mutex     // one writer of the queue's file at a time
-	queueWrites   sync.WaitGroup // the writes not done yet
-	queueRestored bool
+	queueMu     sync.Mutex     // one writer of the queue's file at a time
+	queueWrites sync.WaitGroup // the writes not done yet
+	// queueSaved counts the queues saved, and queueWritten is the last
+	// of them written: one written late never overwrites a newer one.
+	queueSaved, queueWritten uint64
+	queueRestored            bool
 
 	// pending are the functions of update waiting for a frame, where no
 	// window runs them.
@@ -520,11 +523,19 @@ func (a *App) saveQueue() {
 		return
 	}
 	file := a.dirs.queueFile()
+	a.queueSaved++
+	n := a.queueSaved
 	a.queueWrites.Add(1)
 	go func() {
 		defer a.queueWrites.Done()
 		a.queueMu.Lock()
 		defer a.queueMu.Unlock()
+		// The goroutines of saves made one after the other may run in
+		// either order: the older is left out.
+		if n < a.queueWritten {
+			return
+		}
+		a.queueWritten = n
 		os.MkdirAll(filepath.Dir(file), 0o755)
 		if os.WriteFile(file+".tmp", b, 0o600) == nil {
 			os.Rename(file+".tmp", file)

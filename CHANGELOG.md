@@ -10,6 +10,9 @@
   GNOME (with its AppIndicator extension), Ubuntu, Xfce, Cinnamon, MATE
   and Budgie. Windows and KDE Plasma show the song when you point at the
   icon. The theme's color follows the theme as it changes.
+- The queue kept for the next run is always the latest: two saves close
+  together could be written in the wrong order, and an older queue come
+  back.
 
 ## 0.5.1
 
