@@ -1,5 +1,13 @@
 # Changes
 
+## 0.5.1
+
+- V types a V again in every field, the sign-in's too: on Linux and
+  Windows the menu bar took it, as the key of Now Playing, so a server,
+  name or password with a v could not be typed. V still opens Now
+  Playing when nothing is being typed in. A copy that cannot sign in
+  offers this update as it opens, on the sign-in page.
+
 ## 0.5.0
 
 - Spatial audio for headphones: music as if from speakers around you in a
@@ -21,9 +29,6 @@
   menu bar's menus, as Alt and F10 do; questions before something cannot
   be undone (deleting a playlist, removing all downloads) are the
   system's own dialogs.
-- V types a V again in every field, the sign-in's too: on Linux and
-  Windows the menu bar took it, as the key of Now Playing. V still opens
-  Now Playing when nothing is being typed in.
 
 ## 0.4.1
 
