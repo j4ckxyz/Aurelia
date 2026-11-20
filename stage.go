@@ -258,12 +258,22 @@ func (a *App) stageView(c *ui.Context) {
 	if st.mini {
 		win = a.mini
 	}
+	// Swiped back, as from a page, the record gives the app back.
+	swiped := a.swipeInput(func(dir int) {
+		if dir < 0 && !st.mini {
+			a.closeStage()
+		}
+	})
 	root.HandleInput(func(ev ui.InputEvent) bool {
 		if ev.Kind == ui.InputPointerMove {
 			st.pointerAt = time.Now()
 			if !st.buttonsShown && win != nil {
 				win.Invalidate()
 			}
+		}
+		if ev.Kind == ui.InputScroll && !st.mini {
+			a.swiping.can = func(dir int) bool { return dir < 0 }
+			return swiped(ev)
 		}
 		return false
 	})

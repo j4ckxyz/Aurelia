@@ -51,8 +51,10 @@ type App struct {
 	// native is set in the app itself, where there is a system to draw
 	// windows, menus and dialogs; tests have none.
 	native bool
-	pal    *palette
-	palFor string // the theme the palette is of, and its appearance
+	// swiping follows two fingers on a trackpad, to go back or forward.
+	swiping swipe
+	pal     *palette
+	palFor  string // the theme the palette is of, and its appearance
 	// editing is the theme being edited, which shows as it changes.
 	editing *themeEditor
 

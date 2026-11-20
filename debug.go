@@ -92,6 +92,13 @@ func (a *App) debug(dir, line string) {
 		win.SetSize(wi, hi)
 	case "theme":
 		do(func() { a.settings.Theme = arg })
+	case "ask":
+		// "ask Remove all downloads?": the question, as a thing that
+		// cannot be undone asks it; the answer is logged.
+		do(func() {
+			a.ask(promptState{title: arg, text: "Asked by the debug hook.", confirm: "Remove All", danger: true,
+				run: func(string) { log.Print("debug: the question was answered yes") }})
+		})
 	case "search":
 		do(func() {
 			a.search.query = arg

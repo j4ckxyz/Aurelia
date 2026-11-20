@@ -101,6 +101,7 @@ func (a *App) open() {
 	a.applyAppearance()
 	win := mygo.NewWindow(opts)
 	a.win = win
+	a.listenForSwipes()
 	a.rescale()
 	win.OnMove(a.rescale)
 	if runtime.GOOS == "darwin" {

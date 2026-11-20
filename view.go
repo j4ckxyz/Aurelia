@@ -95,6 +95,8 @@ func (a *App) view(c *ui.Context) {
 				a.sidebar(c)
 			}
 			content := ui.Column(c).Grow(1).MinWidth(0)
+			a.swiping.can = a.canNavigate
+			content.HandleInput(a.swipeInput(a.navigate))
 			if a.router.Path() == "/home" {
 				// A wash of the accent from the top, which Home scrolls over.
 				content.LinearGradient(ui.LinearGradient{From: a.pal.accent.Alpha(0.2), To: a.pal.accent.Alpha(0), Angle: 180, End: 0.5, Oklab: true})
@@ -107,6 +109,7 @@ func (a *App) view(c *ui.Context) {
 				ui.Column(c.Key("page:" + a.router.Path())).Grow(1).MinHeight(0).Transition(tween(pageIn)).Children(func() {
 					a.router.View(c, func(r *ui.Route) { a.route(c, r) })
 				})
+				a.swipeArrow(c)
 			})
 			if a.queueShown(c) {
 				a.queuePanel(c)
