@@ -21,6 +21,9 @@ type Effects struct {
 	Mono bool
 	// Balance goes from -1, the left channel alone, to 1, the right.
 	Balance float64
+	// Spatial plays the music for headphones as from speakers around
+	// the listener, in a room (spatial.go). Mono leaves it out.
+	Spatial bool
 }
 
 // eqActive reports that the equalizer changes the sound.
@@ -42,7 +45,7 @@ func (fx Effects) eqActive() bool {
 // idle reports that the effects change nothing, which the engine then
 // does not spend time on.
 func (fx Effects) idle() bool {
-	return !fx.eqActive() && !fx.Mono && math.Abs(fx.Balance) < 0.005
+	return !fx.eqActive() && !fx.Mono && !fx.Spatial && math.Abs(fx.Balance) < 0.005
 }
 
 // Headroom is how many dB, at most 0, the equalizer turns the sound down
@@ -101,6 +104,8 @@ type chain struct {
 	limit float64 // what the limiter turns the sound down by now, 1 for nothing
 	left  float32 // the balance's gain of each channel
 	right float32
+	sp    spatial
+	spLim float64 // the spatial audio's limiter, as the equalizer's
 }
 
 // set makes the chain follow fx. The filters that stay keep their state,
@@ -109,6 +114,14 @@ func (c *chain) set(fx Effects, rate float64) {
 	c.fx, c.rate = fx, rate
 	if c.limit == 0 {
 		c.limit = 1
+	}
+	if c.spLim == 0 {
+		c.spLim = 1
+	}
+	if fx.Spatial && !fx.Mono {
+		c.sp.set(rate)
+	} else {
+		c.sp = spatial{} // what it held goes; it starts afresh when turned on
 	}
 	c.gain = math.Pow(10, (fx.Preamp+fx.Headroom())/20)
 	for i, f := range EQBands {
@@ -134,20 +147,19 @@ func (c *chain) reset() {
 		c.band[i].l, c.band[i].r = [2]float64{}, [2]float64{}
 	}
 	c.limit = 1
+	c.sp.reset()
+	c.spLim = 1
 }
 
-// process changes frames of two samples as the effects ask.
+// process changes frames of two samples as the effects ask: the
+// equalizer, spatial audio, and then mono and the balance.
 func (c *chain) process(buf []float32) {
 	if c.fx.idle() {
 		return
 	}
-	eq := c.fx.eqActive()
-	mono := c.fx.Mono
-	balanced := c.left != 1 || c.right != 1
-	for i := 0; i+1 < len(buf); i += 2 {
-		l, r := float64(buf[i]), float64(buf[i+1])
-		if eq {
-			l, r = l*c.gain, r*c.gain
+	if c.fx.eqActive() {
+		for i := 0; i+1 < len(buf); i += 2 {
+			l, r := float64(buf[i])*c.gain, float64(buf[i+1])*c.gain
 			for k := range c.band {
 				if !c.on[k] {
 					continue
@@ -164,23 +176,43 @@ func (c *chain) process(buf []float32) {
 			}
 			// What the boosts still take over full scale is turned down as
 			// it comes and let back up slowly, as the gain's limiter does.
-			peak := math.Max(math.Abs(l), math.Abs(r))
-			if peak*c.limit > limitCeiling {
-				c.limit = limitCeiling / peak
-			} else {
-				c.limit += (1 - c.limit) * limitRelease
-			}
-			l, r = l*c.limit, r*c.limit
+			l, r = limitPeak(&c.limit, l, r)
+			buf[i], buf[i+1] = float32(l), float32(r)
 		}
+	}
+	mono := c.fx.Mono
+	if c.fx.Spatial && !mono && c.sp.rate > 0 {
+		c.sp.process(buf)
+		// The room adds to the peaks a little: kept under full scale.
+		for i := 0; i+1 < len(buf); i += 2 {
+			l, r := limitPeak(&c.spLim, float64(buf[i]), float64(buf[i+1]))
+			buf[i], buf[i+1] = float32(l), float32(r)
+		}
+	}
+	if !mono && c.left == 1 && c.right == 1 {
+		return
+	}
+	for i := 0; i+1 < len(buf); i += 2 {
+		l, r := float64(buf[i]), float64(buf[i+1])
 		if mono {
 			l = (l + r) / 2
 			r = l
 		}
-		if balanced {
-			l, r = l*float64(c.left), r*float64(c.right)
-		}
+		l, r = l*float64(c.left), r*float64(c.right)
 		buf[i], buf[i+1] = float32(l), float32(r)
 	}
+}
+
+// limitPeak turns a frame down by what it takes over the ceiling at once,
+// and lets the gain back up slowly.
+func limitPeak(limit *float64, l, r float64) (float64, float64) {
+	peak := math.Max(math.Abs(l), math.Abs(r))
+	if peak**limit > limitCeiling {
+		*limit = limitCeiling / peak
+	} else {
+		*limit += (1 - *limit) * limitRelease
+	}
+	return l * *limit, r * *limit
 }
 
 // Response is how much the equalizer's bands boost or cut a sound of f Hz,

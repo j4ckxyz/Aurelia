@@ -20,9 +20,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/jfreymuth/pulse"
+	"github.com/jfreymuth/pulse/proto"
 
 	"aurelia/internal/oto/internal/mux"
 )
@@ -186,8 +188,9 @@ func pulseDevices() (devices []Device, err error) {
 		return nil, err
 	}
 	defer client.Close()
-	sinks, err := client.ListSinks()
-	if err != nil {
+	// The sinks as the server describes them, with their properties.
+	var sinks proto.GetSinkInfoListReply
+	if err := client.RawRequest(&proto.GetSinkInfoList{}, &sinks); err != nil {
 		return nil, err
 	}
 	def := ""
@@ -195,11 +198,36 @@ func pulseDevices() (devices []Device, err error) {
 		def = d.ID()
 	}
 	for _, s := range sinks {
-		name := s.Name()
+		name := s.Device
 		if name == "" {
-			name = s.ID()
+			name = s.SinkName
 		}
-		devices = append(devices, Device{ID: pulsePrefix + s.ID(), Name: name, Default: s.ID() == def})
+		devices = append(devices, Device{ID: pulsePrefix + s.SinkName, Name: name, Default: s.SinkName == def, Headphones: pulseHeadphones(s)})
 	}
 	return devices, nil
+}
+
+// pulseHeadphones tells headphones as PulseAudio and PipeWire describe
+// them: by their form factor, by Bluetooth, which nearly always is, or by
+// the port playing, as a laptop's headphone jack.
+func pulseHeadphones(s *proto.GetSinkInfoReply) bool {
+	prop := func(key string) string {
+		if v, ok := s.Properties[key]; ok {
+			return strings.ToLower(v.String())
+		}
+		return ""
+	}
+	switch prop("device.form_factor") {
+	case "headphone", "headset", "hands-free":
+		return true
+	case "speaker", "internal", "tv", "computer", "hifi", "car":
+		return false
+	}
+	if prop("device.bus") == "bluetooth" || strings.HasPrefix(s.SinkName, "bluez_") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(s.ActivePortName), "headphone") {
+		return true
+	}
+	return namedHeadphones(s.Device)
 }

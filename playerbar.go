@@ -171,6 +171,7 @@ func (a *App) playerMore(c *ui.Context, tight bool) {
 		}
 		m.Submenu("Sleep Timer", a.sleepMenu)
 		m.Submenu("Play On", a.deviceMenu)
+		m.Submenu("Spatial Audio", a.spatialMenu)
 	})
 }
 

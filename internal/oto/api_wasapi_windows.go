@@ -608,7 +608,19 @@ type _PROPERTYKEY struct {
 // Audio)".
 var pkeyDeviceFriendlyName = _PROPERTYKEY{guid(0xa45c254e, 0xdf1c, 0x4efd, [...]byte{0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}), 14}
 
-const _VT_LPWSTR = 31
+const (
+	_VT_LPWSTR = 31
+	_VT_UI4    = 19
+)
+
+// PKEY_AudioEndpoint_FormFactor: what kind of thing the endpoint is.
+var pkeyAudioEndpointFormFactor = _PROPERTYKEY{guid(0x1da5d803, 0xd492, 0x4edd, [...]byte{0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}), 0}
+
+// The form factors (EndpointFormFactor) of what is worn.
+const (
+	formFactorHeadphones = 3
+	formFactorHeadset    = 5
+)
 
 // propVariant is a PROPVARIANT, as it is on a 64-bit system: the type, then
 // the value, which for a string is a pointer to it.
@@ -632,6 +644,17 @@ func (i *_IPropertyStore) String(key *_PROPERTYKEY) (string, error) {
 	// The string was allocated by COM, and is ours to free.
 	defer windows.CoTaskMemFree(v.val)
 	return windows.UTF16PtrToString((*uint16)(v.val)), nil
+}
+
+// Uint32 reads the property of a key that is a number.
+func (i *_IPropertyStore) Uint32(key *_PROPERTYKEY) (uint32, bool) {
+	var v propVariant
+	r, _, _ := syscall.Syscall(i.vtbl.GetValue, 3, uintptr(unsafe.Pointer(i)), uintptr(unsafe.Pointer(key)), uintptr(unsafe.Pointer(&v)))
+	if uint32(r) != uint32(windows.S_OK) || v.vt != _VT_UI4 {
+		return 0, false
+	}
+	// The union's first four bytes, on a little-endian machine.
+	return *(*uint32)(unsafe.Pointer(&v.val)), true
 }
 
 func (i *_IPropertyStore) Release() {

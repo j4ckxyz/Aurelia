@@ -98,6 +98,9 @@ type Settings struct {
 	// channel alone, to 1, the right.
 	Mono    bool    `json:"mono,omitempty"`
 	Balance float64 `json:"balance,omitempty"`
+	// Spatial is spatial audio for headphones: "" off, "auto" while
+	// playing on headphones, "on" always.
+	Spatial string `json:"spatial,omitempty"`
 	// OthersPlaylists shows the playlists other people of the server
 	// made public, among the user's own.
 	OthersPlaylists bool `json:"othersPlaylists,omitempty"`

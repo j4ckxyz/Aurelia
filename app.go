@@ -53,8 +53,11 @@ type App struct {
 	native bool
 	// swiping follows two fingers on a trackpad, to go back or forward.
 	swiping swipe
-	pal     *palette
-	palFor  string // the theme the palette is of, and its appearance
+	// spatialHeard is whether the engine was last told to play spatial
+	// audio.
+	spatialHeard bool
+	pal          *palette
+	palFor       string // the theme the palette is of, and its appearance
 	// editing is the theme being edited, which shows as it changes.
 	editing *themeEditor
 

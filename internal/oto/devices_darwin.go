@@ -22,6 +22,11 @@ const (
 	kAudioObjectPropertyScopeGlobal           = 0x676c6f62 // 'glob'
 	kAudioObjectPropertyScopeOutput           = 0x6f757470 // 'outp'
 	kAudioQueueProperty_CurrentDevice         = 0x61716364 // 'aqcd'
+	kAudioDevicePropertyTransportType         = 0x7472616e // 'tran'
+	kAudioDeviceTransportTypeBluetooth        = 0x626c7565 // 'blue'
+	kAudioDeviceTransportTypeBluetoothLE      = 0x626c6561 // 'blea'
+	kAudioDevicePropertyDataSource            = 0x73737263 // 'ssrc'
+	kAudioDataSourceHeadphones                = 0x6864706e // 'hdpn'
 	kCFStringEncodingUTF8                     = 0x08000100
 )
 
@@ -125,6 +130,32 @@ func hasOutput(device uint32) bool {
 	return false
 }
 
+// uint32Property reads a property of a device that is a number, of scope.
+func uint32Property(device, selector, scope uint32) (uint32, bool) {
+	addr := audioObjectPropertyAddress{selector, scope, 0}
+	var v uint32
+	size := uint32(4)
+	if _AudioObjectGetPropertyData(device, &addr, 0, nil, &size, unsafe.Pointer(&v)) != 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+// isHeadphones tells headphones: AirPods and every other Bluetooth
+// output, which macOS plays to headphones and speakers alike but which
+// are nearly always worn; the Mac's own output while headphones are in
+// its jack; and what a name says.
+func isHeadphones(device uint32, name string) bool {
+	switch t, _ := uint32Property(device, kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal); t {
+	case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
+		return true
+	}
+	if src, ok := uint32Property(device, kAudioDevicePropertyDataSource, kAudioObjectPropertyScopeOutput); ok && src == kAudioDataSourceHeadphones {
+		return true
+	}
+	return namedHeadphones(name)
+}
+
 // Devices lists the outputs that sound can be played on.
 func Devices() ([]Device, error) {
 	if err := loadCoreAudio(); err != nil {
@@ -160,7 +191,7 @@ func Devices() ([]Device, error) {
 		if name == "" {
 			name = uid
 		}
-		devices = append(devices, Device{ID: uid, Name: name, Default: id == def})
+		devices = append(devices, Device{ID: uid, Name: name, Default: id == def, Headphones: isHeadphones(id, name)})
 	}
 	return devices, nil
 }
