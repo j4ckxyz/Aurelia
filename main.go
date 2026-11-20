@@ -80,16 +80,28 @@ func (a *App) open() {
 		BackgroundColor: a.theme().Background.Hex(),
 		Content:         ui.View(a.view),
 	}
-	switch {
-	case runtime.GOOS == "darwin":
-		// The view draws under the window's buttons.
-		opts.TitleBarStyle = mygo.TitleBarHidden
+	// The view draws under the window's own buttons, which the system
+	// draws: the traffic lights on macOS, Windows 11's caption buttons
+	// (with their snap layouts) on Windows, and the desktop's own title
+	// buttons on Linux, where a desktop that decorates windows itself
+	// keeps its title bar.
+	opts.TitleBarStyle = mygo.TitleBarHidden
+	switch runtime.GOOS {
+	case "darwin":
 		opts.TrafficLightPosition = &mygo.Point{X: 18, Y: 18}
-	case ownControls:
-		opts.Frameless = true
+	default:
+		// As tall as the top bar, whose middle the buttons share.
+		opts.TitleBarHeight = topBarH
+		// The menu bar shows with Alt or F10, and the app's menu button
+		// opens the same menus; on Windows a window without a caption
+		// opens them in a popup.
+		opts.AutoHideMenuBar = true
 	}
+	a.native = true
+	a.applyAppearance()
 	win := mygo.NewWindow(opts)
 	a.win = win
+	a.listenForSwipes()
 	a.rescale()
 	win.OnMove(a.rescale)
 	if runtime.GOOS == "darwin" {
@@ -110,8 +122,15 @@ func (a *App) open() {
 		})
 	})
 	mygo.Theme.OnUpdated(func() {
+		// While the app forces the system's chrome to its theme's
+		// appearance, that is all IsDark tells; once it follows the
+		// system again, the change brings the system's own.
 		dark := mygo.Theme.IsDark()
-		a.update(func() { a.systemDark = dark })
+		a.update(func() {
+			if a.appearance == mygo.ThemeSystem || a.appearance == "" {
+				a.systemDark = dark
+			}
+		})
 	})
 	win.Update(a.drain) // what happened before there was a window
 	if !a.started {

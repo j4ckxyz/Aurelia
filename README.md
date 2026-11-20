@@ -105,6 +105,14 @@ installing a newer `.deb` instead.
   reported to the server.
 - **An equalizer** of ten bands and a preamp, with presets and your own,
   heard the instant a slider moves; with mono audio and a balance.
+- **Spatial audio** for headphones: music as if from speakers around you in
+  a room, rather than from inside your head, in the manner of the spatial
+  audio of AirPods. Automatic plays it on AirPods and other headphones
+  alone, and follows them as they are put on and taken off; Always On
+  plays it on anything. Settings ▸ Playback, or the "…" of the player's
+  bar. It is Aurelia's own rendering, the same on every system, and keeps
+  a voice in the middle at its level and its tone; it does not follow your
+  head as Apple's own does with Apple's apps.
 - **Your choice of output.** Settings ▸ Playback lists the computer's
   outputs, and the one you choose is kept: the sound moves to it while a
   song plays, and goes back to the system's default when it is not plugged
@@ -154,7 +162,17 @@ installing a newer `.deb` instead.
 - **The keyboard does everything**: see [Shortcuts](#shortcuts).
 - **Back and forward** through the pages you visited, at the top left, as
   in a browser: buttons, a right click for the history, ⌘[ and ⌘] (Alt+←
-  and Alt+→ on Windows and Linux) and a mouse's side buttons.
+  and Alt+→ on Windows and Linux), a mouse's side buttons, and two fingers
+  swiped across a trackpad, to the right to go back (on macOS, Windows'
+  precision touchpads and Linux; on a Mac, as its trackpad setting says,
+  with two fingers or three).
+- **At home on each system.** The window's buttons are the system's own:
+  the traffic lights on macOS, Windows 11's caption buttons with their snap
+  layouts, and your desktop's title buttons on Linux, or its title bar
+  where it draws one. They, the menus and the questions that ask before
+  something is undone (the system's own dialogs) are light or dark as your
+  theme is. On Windows and Linux the menu at Aurelia's name, at the top of
+  the sidebar, and Alt or F10, open the menu bar's menus.
 - **Downloads for offline.** Download a song, an album or a playlist from
   its page or its menu, and it plays without the server. The Downloads page
   lists what is kept and the room it takes; downloads stay until you remove

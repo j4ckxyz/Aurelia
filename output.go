@@ -90,12 +90,17 @@ func (a *App) outputMissing() bool {
 
 // watchOutput, every few seconds, goes back to the chosen output once it
 // is plugged in again, and plays on the default once it is not.
+// Spatial audio's Automatic follows the headphones put on and taken off
+// the same way.
 func (a *App) watchOutput() {
-	if a.settings.OutputDevice == "" || a.player.engine == nil {
+	if a.player.engine == nil || a.settings.OutputDevice == "" && a.settings.Spatial != spatialAuto {
 		return
 	}
 	if time.Since(a.output.readAt) < 5*time.Second {
 		return
 	}
-	a.readOutputs(a.settleOutput)
+	a.readOutputs(func() {
+		a.settleOutput()
+		a.followHeadphones()
+	})
 }

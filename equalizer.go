@@ -67,7 +67,10 @@ func (s *Settings) effects() audio.Effects {
 // applyEffects tells the engine what the settings ask of the sound.
 func (a *App) applyEffects() {
 	if a.player.engine != nil {
-		a.player.engine.SetEffects(a.settings.effects())
+		fx := a.settings.effects()
+		fx.Spatial = a.spatialOn()
+		a.spatialHeard = fx.Spatial
+		a.player.engine.SetEffects(fx)
 	}
 }
 

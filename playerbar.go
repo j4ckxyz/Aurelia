@@ -171,6 +171,7 @@ func (a *App) playerMore(c *ui.Context, tight bool) {
 		}
 		m.Submenu("Sleep Timer", a.sleepMenu)
 		m.Submenu("Play On", a.deviceMenu)
+		m.Submenu("Spatial Audio", a.spatialMenu)
 	})
 }
 
@@ -360,8 +361,12 @@ func (a *App) queuePanel(c *ui.Context) {
 	panel := ui.Column(c.Key("queue-panel")).Width(queueW).Shrink(0).Transition(tween(panelIn)).Background(p.sidebar).BorderWidth(0, 0, 0, 1).BorderColor(p.border)
 	a.queueTakes(panel) // songs dragged to it
 	panel.Children(func() {
-		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 10, 0, 18).DragWindow().Children(func() {
-			ui.Text(c, "Queue").FontSize(15).FontWeight(700).Grow(1)
+		// The system's buttons at the right of the window are over the
+		// queue's top: its own close button gives way to them, not to be
+		// taken for the window's, and the player bar's closes it.
+		under := c.TitleBar().Right
+		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, max(10, under+6), 0, 18).DragWindow().Children(func() {
+			ui.Text(c, "Queue").FontSize(15).FontWeight(700).Grow(1).SingleLine().MinWidth(0)
 			if len(pl.queue) > 0 && a.textButton(c, "Save").Clicked() {
 				a.saveQueueAsPlaylist()
 			}
@@ -370,7 +375,7 @@ func (a *App) queuePanel(c *ui.Context) {
 					a.clearUpcoming()
 				}
 			}
-			if a.iconButton(c, "x", "Close the queue", 30, 16).Clicked() {
+			if under == 0 && a.iconButton(c, "x", "Close the queue", 30, 16).Clicked() {
 				a.settings.QueueOpen = false
 				a.saveSettings()
 			}

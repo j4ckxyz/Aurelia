@@ -248,6 +248,20 @@ func (a *App) settingsPage(c *ui.Context) {
 						a.goTo("/equalizer")
 					}
 				})
+				a.setting(c, "Spatial audio", a.spatialHelp(), func() {
+					at := spatialName(a.settings.Spatial)
+					names := make([]string, len(spatialChoices))
+					for i, ch := range spatialChoices {
+						names[i] = ch.name
+					}
+					if ui.Select(c.Key("spatial"), &at, names).Width(170).Label("Spatial audio").Changed() {
+						for _, ch := range spatialChoices {
+							if ch.name == at {
+								a.setSpatial(ch.id)
+							}
+						}
+					}
+				})
 				a.setting(c, "Mono audio", "Play the left and right channels as one in both, as for listening with one earphone.", func() {
 					if ui.Switch(c.Key("mono"), &a.settings.Mono).Label("Mono audio").Changed() {
 						a.applyEffects()

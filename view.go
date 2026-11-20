@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 	"time"
 
@@ -27,10 +26,6 @@ const (
 	rowHeight = 52
 )
 
-// ownControls tells that the title bar draws the window's controls, as
-// on Windows, whose window has no frame.
-var ownControls = runtime.GOOS == "windows"
-
 // frame prepares a frame: the theme, the toasts, and what follows the
 // route.
 func (a *App) frame(c *ui.Context) {
@@ -44,6 +39,7 @@ func (a *App) frame(c *ui.Context) {
 		a.pal, a.palFor = newPalette(t), key
 	}
 	c.SetTheme(a.pal.widgets)
+	a.applyAppearance()
 	root := c.Root().Background(a.pal.bg).TextColor(a.pal.text)
 	// Theme files dropped on the window are imported.
 	if files := root.DroppedFiles(); len(files) > 0 {
@@ -99,6 +95,8 @@ func (a *App) view(c *ui.Context) {
 				a.sidebar(c)
 			}
 			content := ui.Column(c).Grow(1).MinWidth(0)
+			a.swiping.can = a.canNavigate
+			content.HandleInput(a.swipeInput(a.navigate))
 			if a.router.Path() == "/home" {
 				// A wash of the accent from the top, which Home scrolls over.
 				content.LinearGradient(ui.LinearGradient{From: a.pal.accent.Alpha(0.2), To: a.pal.accent.Alpha(0), Angle: 180, End: 0.5, Oklab: true})
@@ -111,6 +109,7 @@ func (a *App) view(c *ui.Context) {
 				ui.Column(c.Key("page:" + a.router.Path())).Grow(1).MinHeight(0).Transition(tween(pageIn)).Children(func() {
 					a.router.View(c, func(r *ui.Route) { a.route(c, r) })
 				})
+				a.swipeArrow(c)
 			})
 			if a.queueShown(c) {
 				a.queuePanel(c)
@@ -423,8 +422,7 @@ func (a *App) sidebar(c *ui.Context) {
 		a.sidebarHandle(c)
 		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 10, 0, max(bar.Left+4, 12)).Gap(2).DragWindow().Children(func() {
 			if bar.Left == 0 {
-				ui.Icon(c, icon("logo")).Size(20, 20).TextColor(p.accent)
-				ui.Text(c, "Aurelia").FontWeight(700).FontSize(15).Margin(0, 0, 0, 8).SingleLine().Shrink(1).MinWidth(0)
+				a.appMenuButton(c)
 			}
 			ui.Spacer(c)
 			a.sidebarButton(c, true)
@@ -623,7 +621,12 @@ func (a *App) topBar(c *ui.Context) {
 	if away {
 		left = max(c.TitleBar().Left+4, 12)
 	}
-	ui.Row(c).Height(topBarH).Shrink(0).Padding(0, 16, 0, left).Gap(8).DragWindow().Children(func() {
+	right := float32(16)
+	if !a.queueShown(c) {
+		// The system's buttons at the right of the window are over it.
+		right = max(right, c.TitleBar().Right+8)
+	}
+	ui.Row(c).Height(topBarH).Shrink(0).Padding(0, right, 0, left).Gap(8).DragWindow().Children(func() {
 		if away {
 			ui.Row(c).Gap(2).Shrink(0).Margin(0, 4, 0, 0).Children(func() {
 				a.sidebarButton(c, false)
@@ -648,39 +651,8 @@ func (a *App) topBar(c *ui.Context) {
 				a.sync()
 			}
 		}
-		a.windowControls(c)
 	})
 	_ = p
-}
-
-// windowControls draws the buttons that minimize, maximize and close the
-// window where it has none of its own.
-func (a *App) windowControls(c *ui.Context) {
-	win := a.win
-	if !ownControls || win == nil || win.IsFullScreen() {
-		return
-	}
-	p := a.pal
-	if a.iconButton(c, "minus", "Minimize", 30, 15).Clicked() {
-		win.Minimize()
-	}
-	glyph, label := "square", "Maximize"
-	if win.IsMaximized() {
-		glyph, label = "copy", "Restore"
-	}
-	if a.iconButton(c, glyph, label, 30, 13).Clicked() {
-		win.ToggleMaximize()
-	}
-	b := ui.ButtonBase(c).Size(30, 30).Radius(15).Label("Close").Tooltip("Close")
-	fg := p.muted
-	if b.Hovered() {
-		b.Background(ui.Hex("#c42b1c"))
-		fg = ui.Hex("#ffffff")
-	}
-	b.Children(func() { ui.Icon(c, icon("x")).Size(16, 16).TextColor(fg) })
-	if b.Clicked() {
-		win.Close()
-	}
 }
 
 // emptyState fills a page that has nothing to show.

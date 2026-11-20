@@ -428,6 +428,9 @@ func (e *Engine) SetVolume(v float64) {
 
 // SetEffects sets the equalizer, the mono and the balance: heard at once.
 func (e *Engine) SetEffects(fx Effects) {
+	if fx.Spatial {
+		WarmSpatial(e.rate) // the fit, while the sound plays on
+	}
 	e.mu.Lock()
 	e.fx.set(fx, float64(e.rate))
 	e.mu.Unlock()

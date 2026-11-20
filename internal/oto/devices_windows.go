@@ -51,16 +51,21 @@ func listEndpoints() ([]Device, error) {
 			d.Release()
 			continue
 		}
-		name := ""
+		name, worn := "", false
 		if ps, err := d.OpenPropertyStore(); err == nil {
 			name, _ = ps.String(&pkeyDeviceFriendlyName)
+			// What Windows knows the endpoint as: headphones or a
+			// headset, as Bluetooth ones and the jack's are.
+			if ff, ok := ps.Uint32(&pkeyAudioEndpointFormFactor); ok {
+				worn = ff == formFactorHeadphones || ff == formFactorHeadset
+			}
 			ps.Release()
 		}
 		d.Release()
 		if name == "" {
 			name = id
 		}
-		devices = append(devices, Device{ID: id, Name: name, Default: id == defID})
+		devices = append(devices, Device{ID: id, Name: name, Default: id == defID, Headphones: worn || namedHeadphones(name)})
 	}
 	if len(devices) == 0 && n > 0 {
 		return nil, fmt.Errorf("oto: no output could be read of %d", n)

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -92,6 +93,25 @@ type Device struct {
 	Name string
 	// Default is the output the system plays on when none is chosen.
 	Default bool
+	// Headphones tells that it is worn rather than heard in a room:
+	// AirPods and other Bluetooth headphones, a headset, or the
+	// headphone jack. Each system says so in its own way; a name that
+	// says so is taken at its word.
+	Headphones bool
+}
+
+// headphoneWords are what names of headphones say.
+var headphoneWords = []string{"airpods", "headphone", "headset", "earphone", "earbud", "buds", "beats", "earpods"}
+
+// namedHeadphones reports whether a device's name says it is headphones.
+func namedHeadphones(name string) bool {
+	n := strings.ToLower(name)
+	for _, w := range headphoneWords {
+		if strings.Contains(n, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewContext creates a new context with given options.

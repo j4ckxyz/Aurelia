@@ -28,6 +28,9 @@ type promptState struct {
 
 // ask shows a question.
 func (a *App) ask(p promptState) {
+	if a.askNatively(p) {
+		return
+	}
 	p.open = true
 	a.prompt = p
 }

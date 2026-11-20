@@ -1134,7 +1134,7 @@ func TestPlayerMore(t *testing.T) {
 	wantTexts(t, tt, "Now Playing", "Queue", "Shuffle", "Repeat", playerMoreLabel)
 	click(t, tt, playerMoreLabel)
 	tt.Frame()
-	if got := strings.Join(tt.Menu(), ","); got != "Sleep Timer,Play On" {
+	if got := strings.Join(tt.Menu(), ","); got != "Sleep Timer,Play On,Spatial Audio" {
 		t.Errorf("a wide window's menu: %s", got)
 	}
 	if err := tt.ChooseMenuItem("Sleep Timer", "In 30 minutes"); err != nil {
@@ -1158,7 +1158,7 @@ func TestPlayerMore(t *testing.T) {
 	tt.Frame()
 	click(t, tt, playerMoreLabel)
 	tt.Frame()
-	if got := strings.Join(tt.Menu(), ","); got != "Shuffle,Repeat,-,Sleep Timer,Play On" {
+	if got := strings.Join(tt.Menu(), ","); got != "Shuffle,Repeat,-,Sleep Timer,Play On,Spatial Audio" {
 		t.Errorf("a narrow window's menu: %s", got)
 	}
 	if err := tt.ChooseMenuItem("Shuffle"); err != nil {
