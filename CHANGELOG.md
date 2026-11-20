@@ -1,5 +1,27 @@
 # Changes
 
+## 0.5.0
+
+- Spatial audio for headphones: music as if from speakers around you in a
+  room, rather than from inside your head, in the manner of the spatial
+  audio of AirPods. Automatic plays it on AirPods and other headphones
+  alone, and follows them as they are put on and taken off; Always On
+  plays it on anything. In Settings ▸ Playback and the player's "…".
+- Two fingers swiped across a trackpad go back (to the right) and forward
+  (to the left), with an arrow at the side of the page, on macOS,
+  Windows' precision touchpads and Linux; on a Mac as its trackpad
+  setting says, with two fingers or three. On the record, a swipe back
+  gives the app back.
+- The window's buttons are the system's own: Windows 11's caption
+  buttons, with their snap layouts, in place of Aurelia's; on Linux the
+  desktop's title buttons over the window, or its title bar where the
+  compositor draws one. They, the menus and the dialogs are light or dark
+  as the theme is.
+- On Windows and Linux, Aurelia's name at the top of the sidebar opens the
+  menu bar's menus, as Alt and F10 do; questions before something cannot
+  be undone (deleting a playlist, removing all downloads) are the
+  system's own dialogs.
+
 ## 0.4.1
 
 - A new look: sea glass, the water of the moon jellyfish Aurelia is named
