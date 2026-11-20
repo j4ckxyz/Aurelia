@@ -3,6 +3,7 @@ package audio
 import (
 	"math"
 	"math/cmplx"
+	"sync"
 )
 
 // Spatial audio for headphones: the music as if it played from speakers
@@ -348,7 +349,7 @@ func (s *spatial) set(rate float64) {
 		s.tailGain[k] = math.Pow(10, -3*ms/1000/tailRT60)
 		s.tailDamp[k].lowpass(4000, rate)
 	}
-	s.keepTone()
+	s.gain, s.tone = toneFor(s)
 }
 
 // keepTone sets the gain and the bands that keep a sound in the middle as
@@ -357,6 +358,41 @@ func (s *spatial) set(rate float64) {
 // far one comes half a wave late, around 2 kHz. The bands fill that in, on
 // what both channels have alike alone: what is on one side, which no
 // comb colors, keeps its tone.
+// The tone kept, fitted once for each rate: the fit takes a few
+// milliseconds, which the engine does not wait for (WarmSpatial).
+var (
+	tonesMu sync.Mutex
+	tones   = map[float64]fittedTone{}
+)
+
+type fittedTone struct {
+	gain float64
+	tone []filter2
+}
+
+// toneFor returns the gain and the bands for the rate of s, whose
+// speakers are set, fitting them the first time.
+func toneFor(s *spatial) (float64, [2][]filter2) {
+	tonesMu.Lock()
+	ft, ok := tones[s.rate]
+	tonesMu.Unlock()
+	if !ok {
+		s.keepTone()
+		ft = fittedTone{s.gain, s.tone[0]}
+		tonesMu.Lock()
+		tones[s.rate] = ft
+		tonesMu.Unlock()
+	}
+	// Each channel its own filters, with their own state.
+	return ft.gain, [2][]filter2{append([]filter2(nil), ft.tone...), append([]filter2(nil), ft.tone...)}
+}
+
+// WarmSpatial fits spatial audio's tone for a rate ahead of its use.
+func WarmSpatial(rate int) {
+	var s spatial
+	s.set(float64(rate))
+}
+
 func (s *spatial) keepTone() {
 	s.gain, s.tone = 1, [2][]filter2{}
 	grid := make([]float64, 0, 64)
