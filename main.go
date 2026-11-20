@@ -232,6 +232,24 @@ func (a *App) quit() {
 	a.queueWrites.Wait() // the queue's file is written on another goroutine
 }
 
+// menuAccelerator is the key the menu bar shows for a command, and takes
+// for it from the whole window. A key with no modifier, as Space or V, is
+// left to the window's own shortcuts, which leave it to a field being
+// typed in: the menu bar would take it from what is typed, on every page,
+// the sign-in's too.
+func menuAccelerator(cmd *command) string {
+	k := cmd.keys[0]
+	if cmd.id == "back" || cmd.id == "onward" {
+		// The brackets: the arrows with Command move in a field's text,
+		// which a menu would take them from.
+		k = cmd.keys[1]
+	}
+	if k.mods == 0 {
+		return ""
+	}
+	return k.accelerator()
+}
+
 // menu is the app's menu bar.
 func (a *App) menu() *mygo.Menu {
 	item := func(label, accel string, fn func()) *mygo.MenuItem {
@@ -244,15 +262,7 @@ func (a *App) menu() *mygo.Menu {
 		var items []*mygo.MenuItem
 		for i := range commands {
 			if cmd := &commands[i]; cmd.menu == title {
-				accel := cmd.keys[0].accelerator()
-				switch cmd.id {
-				case "toggle":
-					accel = "" // Space is the window's: a menu would take it from what is typed
-				case "back", "onward":
-					// The brackets: the arrows with Command move in a
-					// field's text, which a menu would take them from.
-					accel = cmd.keys[1].accelerator()
-				}
+				accel := menuAccelerator(cmd)
 				items = append(items, item(cmd.label, accel, func() { a.do(cmd) }))
 			}
 		}

@@ -21,6 +21,9 @@
   menu bar's menus, as Alt and F10 do; questions before something cannot
   be undone (deleting a playlist, removing all downloads) are the
   system's own dialogs.
+- V types a V again in every field, the sign-in's too: on Linux and
+  Windows the menu bar took it, as the key of Now Playing. V still opens
+  Now Playing when nothing is being typed in.
 
 ## 0.4.1
 
