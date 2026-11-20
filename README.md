@@ -140,7 +140,12 @@ installing a newer `.deb` instead.
   you let it (Settings ▸ Playback; it is told the song's artist, title,
   album and length).
 - **On your desktop.** An icon in the menu bar or the tray with the song and
-  its buttons (and closing the window leaves the music playing), a
+  its buttons (and closing the window leaves the music playing): Aurelia's
+  icon in a color of your choice, or the cover of the song playing, with
+  the song, or the song and the artist, beside it in macOS's menu bar and
+  in the panels of GNOME (with its AppIndicator extension), Ubuntu, Xfce,
+  Cinnamon, MATE and Budgie (Windows and KDE Plasma show it when you point
+  at the icon); Settings ▸ Desktop, with a picture of how it looks. A
   notification as the song changes while Aurelia is behind, and
   **scrobbling to ListenBrainz** or a server of your own that speaks as it
   does: your token in Settings ▸ Scrobbling.
