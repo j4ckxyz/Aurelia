@@ -68,6 +68,14 @@ type Settings struct {
 	// notification as the song changes while the window is not in front.
 	Tray   bool `json:"tray,omitempty"`
 	Notify bool `json:"notify,omitempty"`
+	// TrayIcon is what the icon shows: "" Aurelia's icon, "art" the
+	// cover of the song playing. TrayColor is the color of Aurelia's
+	// icon ("" the system's own, or one of trayColors), and TrayText what
+	// shows beside it: "" nothing, "song" the song, "artist" the song
+	// and the artist (macOS and Linux).
+	TrayIcon  string `json:"trayIcon,omitempty"`
+	TrayColor string `json:"trayColor,omitempty"`
+	TrayText  string `json:"trayText,omitempty"`
 	// Scrobble sends plays to ListenBrainz, or to the server at
 	// ListenBrainzURL that speaks as it does, with the user's token.
 	Scrobble          bool   `json:"scrobble,omitempty"`
