@@ -1,6 +1,9 @@
 package main
 
 import (
+	"image/png"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -172,5 +175,17 @@ func TestSwipeArrowShows(t *testing.T) {
 	}
 	if a.router.Path() != "/albums" {
 		t.Errorf("a short swipe went to %q", a.router.Path())
+	}
+	if dir := os.Getenv("AURELIA_CHROME_SHOTS"); dir != "" {
+		for range 7 {
+			in(ui.InputEvent{Kind: ui.InputScroll, DX: -8, Precise: true})
+		}
+		tt.Frame()
+		f, err := os.Create(filepath.Join(dir, "swipe.png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		png.Encode(f, tt.Image())
+		f.Close()
 	}
 }
