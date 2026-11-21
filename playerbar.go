@@ -172,6 +172,9 @@ func (a *App) playerMore(c *ui.Context, tight bool) {
 		m.Submenu("Sleep Timer", a.sleepMenu)
 		m.Submenu("Play On", a.deviceMenu)
 		m.Submenu("Spatial Audio", a.spatialMenu)
+		if m.Item("Vinyl").Checked(a.settings.Vinyl).Chosen() {
+			a.setVinyl(!a.settings.Vinyl)
+		}
 	})
 }
 

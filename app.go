@@ -91,11 +91,15 @@ type App struct {
 	progress library.Progress
 	syncErr  string
 
-	// The seek bar while it is dragged, and a volume not saved yet.
+	// The seek bar while it is dragged, and a volume, a balance and a
+	// record's wear not saved yet.
 	balanceDirty bool
-	scrubbing    bool
-	scrub        float64
-	volumeDirty  bool
+	vinylDirty   bool
+	// vinylKey is the song and settings vinylText says what plays from.
+	vinylKey, vinylText string
+	scrubbing           bool
+	scrub               float64
+	volumeDirty         bool
 
 	// hiddenGen counts the albums taken out of "Jump back in".
 	hiddenGen int

@@ -170,7 +170,7 @@ func (p *player) trackOf(s *library.Song) *audio.Track {
 	quality := jellyfin.Quality{MaxBitrate: app.settings.MaxBitrate * 1000}
 	id := s.ID
 	return &audio.Track{
-		ID: id, Duration: s.Duration(), GainDB: s.GainDB,
+		ID: id, Duration: s.Duration(), GainDB: s.GainDB, Groove: app.grooveOf(s),
 		Open: func() (*audio.File, error) {
 			// A song downloaded for offline plays from its file.
 			if d := app.downloads; d != nil && d.store != nil && d.store.Has(id) {

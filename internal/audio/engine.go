@@ -26,6 +26,9 @@ type Track struct {
 	// NoFade keeps the track from being faded into from the one before it:
 	// for songs that follow each other on an album.
 	NoFade bool
+	// Groove is where the track is on a record of its album's, for vinyl
+	// playback; nil plays it as a single of its own.
+	Groove *Groove
 }
 
 // EventKind says what happened.
@@ -121,6 +124,7 @@ type loadReq struct {
 // segment is a run of one track's frames in the ring.
 type segment struct {
 	id     string
+	groove *Groove
 	dur    time.Duration
 	file   *File
 	start  int64 // of its first frame in the track, in frames of the device
@@ -308,7 +312,10 @@ func (e *Engine) Play(track *Track, at time.Duration) {
 	e.rhead, e.rlen = 0, 0
 	// The segment stands for the track until its sound comes, so that
 	// the state names it at once.
-	e.segs = []*segment{{id: track.ID, dur: track.Duration, start: e.frames(at)}}
+	e.segs = []*segment{{id: track.ID, groove: track.Groove, dur: track.Duration, start: e.frames(at)}}
+	if v := e.fx.vin; v != nil {
+		v.cue() // the needle is lifted, to drop where the track begins
+	}
 	e.interrupt()
 	paused := e.paused
 	e.cond.Broadcast()
@@ -349,7 +356,10 @@ func (e *Engine) SeekTo(to time.Duration) {
 	e.gen++
 	e.ended = false
 	e.rhead, e.rlen = 0, 0
-	e.segs = []*segment{{id: head.id, dur: head.dur, file: head.file, start: e.frames(to)}}
+	e.segs = []*segment{{id: head.id, groove: head.groove, dur: head.dur, file: head.file, start: e.frames(to)}}
+	if v := e.fx.vin; v != nil {
+		v.seek()
+	}
 	switch {
 	case e.load != nil:
 		// The track has not begun: it begins there.
@@ -409,6 +419,9 @@ func (e *Engine) Stop() {
 	e.ended = false
 	e.rhead, e.rlen = 0, 0
 	e.segs = nil
+	if v := e.fx.vin; v != nil {
+		v.stop()
+	}
 	e.interrupt()
 	e.cond.Broadcast()
 	e.mu.Unlock()
@@ -430,6 +443,9 @@ func (e *Engine) SetVolume(v float64) {
 func (e *Engine) SetEffects(fx Effects) {
 	if fx.Spatial {
 		WarmSpatial(e.rate) // the fit, while the sound plays on
+	}
+	if fx.Vinyl {
+		WarmVinyl(e.rate)
 	}
 	e.mu.Lock()
 	e.fx.set(fx, float64(e.rate))
@@ -578,7 +594,10 @@ func (r deviceReader) Read(p []byte) (int, error) { return r.e.read(p) }
 func (r deviceReader) Seek(offset int64, whence int) (int64, error) { return 0, nil }
 
 // read gives the device its samples. It never waits: the ring is filled
-// by the pump, and silence stands in for what is not there yet.
+// by the pump, and silence stands in for what is not there yet. Playing as
+// from a record, the stylus is told where each frame is in its groove, and
+// plays the stretches of groove without music between: the lead-in where
+// the needle drops, the run-out where a side ends.
 func (e *Engine) read(p []byte) (int, error) {
 	frames := len(p) / 8
 	if frames == 0 {
@@ -587,7 +606,15 @@ func (e *Engine) read(p []byte) (int, error) {
 	out := unsafe.Slice((*float32)(unsafe.Pointer(&p[0])), 2*frames)
 	n := 0
 	e.mu.Lock()
-	for n < frames && len(e.segs) > 0 {
+	v := e.fx.vin
+	for n < frames {
+		if v != nil && v.holding() {
+			n += v.hold(out[2*n : 2*frames])
+			continue
+		}
+		if len(e.segs) == 0 {
+			break
+		}
 		seg := e.segs[0]
 		if seg.queued == 0 {
 			if !seg.final {
@@ -595,17 +622,29 @@ func (e *Engine) read(p []byte) (int, error) {
 			}
 			if len(e.segs) == 1 {
 				if e.ended {
+					if v != nil && v.leave(seg, nil) {
+						continue // the run-out first
+					}
 					e.segs = nil
 					e.emit(Event{Kind: Ended, TrackID: seg.id})
 				}
 				break
 			}
+			if v != nil && v.leave(seg, e.segs[1]) {
+				continue // the side ends, or the record changes
+			}
 			e.segs = e.segs[1:]
 			e.emit(Event{Kind: TrackChanged, TrackID: e.segs[0].id})
 			continue
 		}
+		if v != nil && v.enter(seg) {
+			continue // the needle drops first
+		}
 		k := min(frames-n, seg.queued, ringFrames-e.rhead)
 		copy(out[2*n:2*(n+k)], e.ring[2*e.rhead:2*(e.rhead+k)])
+		if v != nil {
+			v.play(out[2*n:2*(n+k)], seg, seg.start+seg.played)
+		}
 		e.rhead = (e.rhead + k) % ringFrames
 		e.rlen -= k
 		seg.queued -= k
@@ -666,7 +705,7 @@ func (e *Engine) pump() {
 				cur.close()
 				cur, nxt = nxt, nil
 				e.next, e.nextFile = nil, nil
-				cur.seg = &segment{id: cur.track.ID, dur: cur.track.Duration, file: cur.file, start: cur.consumed}
+				cur.seg = &segment{id: cur.track.ID, groove: cur.track.Groove, dur: cur.track.Duration, file: cur.file, start: cur.consumed}
 				e.segs = append(e.segs, cur.seg)
 				e.pumpFile = cur.file
 				continue

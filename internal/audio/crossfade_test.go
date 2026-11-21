@@ -89,6 +89,9 @@ func (c *collector) ready() bool {
 	c.e.mu.Lock()
 	defer c.e.mu.Unlock()
 	n := len(c.e.segs)
+	if v := c.e.fx.vin; v != nil && (v.holding() || n > 0 && c.e.segs[n-1].final) {
+		return true // the groove plays on without the music: a lead-in, a run-out
+	}
 	return c.e.rlen >= 1024 || (n > 0 && c.e.segs[n-1].final && c.e.rlen > 0)
 }
 

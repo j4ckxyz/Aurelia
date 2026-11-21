@@ -113,6 +113,22 @@ installing a newer `.deb` instead.
   bar. It is Aurelia's own rendering, the same on every system, and keeps
   a voice in the middle at its level and its tone; it does not follow your
   head as Apple's own does with Apple's apps.
+- **Vinyl**: music as if played from its album's record on a turntable.
+  Each album is laid out on records as a pressing plant would (LPs of
+  sides of 24 minutes at most, a 45 for a few songs, 78s before 1950),
+  and the sound is worked out from the groove itself: the music cut with
+  the RIAA curve into the walls of a stereo groove, worn by the round
+  stylus that played it, with dust and scratches in it, traced by a
+  stylus of today. So the hiss and crackle are heard where a record's
+  are, in quiet passages and between songs; scratches tick once a
+  revolution; worn records lose treble, and grit on loud highs; the
+  inner grooves at the end of a side distort a little more; the needle
+  drops into the lead-in as a side begins, and the run-out and the
+  locked groove play as it ends, before the other side. The record's
+  condition, by collectors' grades, is what the album's year has made it,
+  or one you choose, made cleaner or more worn with a slider. Each record
+  is the same each time: its scratches where they were. Settings ▸
+  Playback, or the "…" of the player's bar.
 - **Your choice of output.** Settings ▸ Playback lists the computer's
   outputs, and the one you choose is kept: the sound moves to it while a
   song plays, and goes back to the system's default when it is not plugged
