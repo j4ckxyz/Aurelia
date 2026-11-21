@@ -1,5 +1,25 @@
 # Changes
 
+## 0.7.0
+
+- Vinyl: music as if played from its album's record, on a turntable
+  (Settings ▸ Playback, or Vinyl in the "…" of the player's bar). Each
+  album is laid out on records as a pressing plant would: LPs of sides of
+  24 minutes at most, a 45 for a few songs, 78s for albums before 1950.
+  The sound is worked out from the groove itself: the music cut into it,
+  worn by the stylus that played it, dust and scratches in it, traced by a
+  stylus of today. So the hiss and crackle are heard where a record's are,
+  in quiet passages and between songs; scratches tick once a revolution;
+  worn records lose treble and are gritty on loud highs, the more so
+  towards the end of a side. The needle drops into the lead-in as a side
+  begins, and the run-out and the locked groove play before the other
+  side; going from one album to another, the needle is lifted and dropped
+  again, unless songs crossfade.
+- The record's condition is what the album's year has made it, or a
+  collector's grade from Mint to Fair, made cleaner or more worn with a
+  slider. A record is the same each time it plays, its scratches where
+  they were.
+
 ## 0.6.0
 
 - The icon in the menu bar or the tray, as you like it (Settings ▸
