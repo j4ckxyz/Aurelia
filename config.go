@@ -109,6 +109,13 @@ type Settings struct {
 	// Spatial is spatial audio for headphones: "" off, "auto" while
 	// playing on headphones, "on" always.
 	Spatial string `json:"spatial,omitempty"`
+	// Vinyl plays the music as from a record of its album's. VinylGrade
+	// is the record's condition: "" what the album's year makes it, or
+	// one of vinylChoices; VinylMore moves it from -1, much cleaner, to 1,
+	// much more worn.
+	Vinyl      bool    `json:"vinyl,omitempty"`
+	VinylGrade string  `json:"vinylGrade,omitempty"`
+	VinylMore  float64 `json:"vinylMore,omitempty"`
 	// OthersPlaylists shows the playlists other people of the server
 	// made public, among the user's own.
 	OthersPlaylists bool `json:"othersPlaylists,omitempty"`

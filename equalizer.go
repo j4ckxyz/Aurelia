@@ -61,6 +61,7 @@ func (s *Settings) effects() audio.Effects {
 	return audio.Effects{
 		EQ: s.EQ.On, Gains: s.EQ.Bands, Preamp: s.EQ.Preamp,
 		Mono: s.Mono, Balance: s.Balance,
+		Vinyl: s.Vinyl, VinylGrade: vinylGrade(s.VinylGrade), VinylMore: max(-1, min(1, s.VinylMore)),
 	}
 }
 

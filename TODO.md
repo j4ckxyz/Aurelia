@@ -124,6 +124,30 @@ so each stays here until it is.
         (the endpoints are listed and opened by ID, and the render loop
         opens another when asked) and vetted, and its listing runs in CI,
         where no sound card exists: no one has played through it yet.
+- [ ] Vinyl: the music as if from its album's record (asked 2026-11-21).
+      Built, with tests in `internal/audio/vinyl_test.go` and
+      `vinyl_test.go`; not yet heard in the app, so it stays here until
+      it is.
+  - [x] A groove traced as it is in life, not noise laid over: the music
+        cut with the RIAA curve into a 45/45 groove, worn by the old
+        stylus (its crests flattened, its fine detail smoothed, grit
+        where it was hammered), dust and scratches on it, traced by an
+        elliptical tip at twice the rate, played back through the RIAA
+        curve. *(tests: the hiss of each grade within 1 dB of its level;
+        the treble the wear takes to 0.02 dB of theory; tracing distortion
+        of 0.35% and 1.7% at the outer and inner grooves for 1 kHz at
+        -6 dBFS; the crackle quieter in mono; a scratch every 1.8 s)*
+  - [x] Where a record has it: between songs and in quiet passages, at
+        the start of a side (the needle drop and the lead-in) and its end
+        (the run-out, a turn of the locked groove, the lift), on the loud
+        highs of worn records, more at the end of a side. *(tested on the
+        engine: the lead-in a revolution long, songs of a side gapless,
+        the other side after the flip)*
+  - [x] By the album's year, or a grade of Goldmine's, and a slider for
+        cleaner or more worn; 78s for albums before 1950, 45s for a few
+        songs. In Settings ▸ Playback and the player's "…".
+  - [ ] Heard in the app on a real library, on macOS, Windows and Linux,
+        with the grades and the side flips judged by ear.
 - [ ] *Suggested, to choose from:*
   - [ ] Normalization by album as well as by song, so that an album
         keeps its own quiet and loud songs.

@@ -24,6 +24,13 @@ type Effects struct {
 	// Spatial plays the music for headphones as from speakers around
 	// the listener, in a room (spatial.go). Mono leaves it out.
 	Spatial bool
+	// Vinyl plays the music as from a record of its album's, on a
+	// turntable (vinyl.go). VinylGrade is the record's condition, from
+	// Mint (0) to Fair (6), or below 0 what the album's year makes it;
+	// VinylMore moves that from -1, much better, to 1, much worse.
+	Vinyl      bool
+	VinylGrade float64
+	VinylMore  float64
 }
 
 // eqActive reports that the equalizer changes the sound.
@@ -106,6 +113,10 @@ type chain struct {
 	right float32
 	sp    spatial
 	spLim float64 // the spatial audio's limiter, as the equalizer's
+	// vin is the record, while the music plays as from one: it comes
+	// first, as a turntable does before the amplifier, and is given the
+	// music by the engine as it knows where each frame is on its record.
+	vin *vinyl
 }
 
 // set makes the chain follow fx. The filters that stay keep their state,
@@ -122,6 +133,15 @@ func (c *chain) set(fx Effects, rate float64) {
 		c.sp.set(rate)
 	} else {
 		c.sp = spatial{} // what it held goes; it starts afresh when turned on
+	}
+	switch {
+	case !fx.Vinyl:
+		c.vin = nil
+	case c.vin == nil || c.vin.rate != rate:
+		c.vin = newVinyl(rate)
+		fallthrough
+	default:
+		c.vin.setGrade(fx.VinylGrade, fx.VinylMore)
 	}
 	c.gain = math.Pow(10, (fx.Preamp+fx.Headroom())/20)
 	for i, f := range EQBands {
