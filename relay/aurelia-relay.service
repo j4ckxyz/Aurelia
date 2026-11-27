@@ -1,0 +1,29 @@
+# The relay as a systemd service. Its key goes in an override:
+#   sudo systemctl edit aurelia-relay
+#   [Service]
+#   Environment=AURELIA_RELAY_KEY=…
+[Unit]
+Description=Aurelia's Jam relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=aurelia-relay
+ExecStart=/usr/local/bin/aurelia-relay -addr 127.0.0.1:8787 -behind-proxy
+Restart=on-failure
+RestartSec=5
+# Small, and kept so: it holds nothing but the Jams passing through.
+MemoryMax=96M
+Environment=GOMEMLIMIT=64MiB
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

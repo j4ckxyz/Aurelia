@@ -324,7 +324,7 @@ func (a *App) tailInviteLink() string {
 	if a.jam.host == nil || !ip.IsValid() {
 		return ""
 	}
-	return jam.Invite(net.JoinHostPort(ip.String(), strconv.Itoa(a.tailJamPort())), a.jam.host.Code())
+	return jam.InviteVia(net.JoinHostPort(ip.String(), strconv.Itoa(a.tailJamPort())), a.jam.host.Code(), a.jam.relayAddr)
 }
 
 // tailHosted has the door hand the Jam this computer now holds, or no

@@ -8,6 +8,7 @@ require (
 	github.com/egoist/mygo v0.3.5
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/hajimehoshi/go-mp3 v0.3.4
+	github.com/hashicorp/yamux v0.1.2
 	github.com/jfreymuth/pulse v0.1.3
 	github.com/mewkiz/flac v1.0.14
 	golang.org/x/image v0.46.0

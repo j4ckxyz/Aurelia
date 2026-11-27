@@ -72,3 +72,26 @@ jobs:
           else
             go test . -run 'MPRIS|SystemMediaControls|TypedEventHandler' -v
           fi
+
+  relay:
+    # The Jam relay (relay/), a module of its own, run on a server.
+    name: relay
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: relay/go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+      - name: Build for Linux servers
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          GOARCH=amd64 go build -ldflags='-s -w' -o /dev/null .
+          GOARCH=arm64 go build -ldflags='-s -w' -o /dev/null .

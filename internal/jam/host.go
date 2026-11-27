@@ -46,9 +46,13 @@ type Host struct {
 	port                      int
 	announce                  *announcer
 	discoverable              bool
+	// The host's room at relays, and its servers there.
+	relayOnce        sync.Once
+	room, roomSecret string
 
 	mu       sync.Mutex
 	closed   bool
+	relays   []*http.Server
 	members  []*member
 	requests map[string]*request
 	fetches  map[string]chan pushed
@@ -213,6 +217,13 @@ func (h *Host) Close() {
 	defer cancel()
 	h.srv.Shutdown(ctx)
 	h.srv.Close()
+	h.mu.Lock()
+	relays := h.relays
+	h.relays = nil
+	h.mu.Unlock()
+	for _, srv := range relays {
+		srv.Close()
+	}
 }
 
 // Publish is what plays, as it changes: it goes to every guest.

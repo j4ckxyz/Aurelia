@@ -20,6 +20,7 @@ import (
 	"crypto/rand"
 	"net"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -317,6 +318,59 @@ const InviteScheme = "aurelia://jam/"
 
 // Invite returns the invite of a host at addr with code.
 func Invite(addr, code string) string { return InviteScheme + addr + "/" + code }
+
+// InviteVia returns the invite of a host at addr with code that is also
+// reached through a relay, at via: aurelia://jam/192.168.1.20:47475/K7QX4R?via=https%3A%2F%2Frelay.example%2Fr%2F….
+// A guest tries the address of the network first, then the relay.
+func InviteVia(addr, code, via string) string {
+	if via == "" {
+		return Invite(addr, code)
+	}
+	return Invite(addr, code) + "?via=" + url.QueryEscape(via)
+}
+
+// Target is what a guest joins: a host's address on a network, a relay's
+// address of it, or both, and the Jam's code.
+type Target struct {
+	Addr, Via, Code string
+}
+
+// ParseTarget reads what a user typed or pasted to join, as ParseJoin
+// does, and the relay an invite names, or a relay's address of a Jam
+// followed by its code.
+func ParseTarget(s string) (t Target, ok bool) {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "?via="); i >= 0 {
+		rest := s[i+len("?via="):]
+		if j := strings.IndexAny(rest, " \t\r\n"); j >= 0 {
+			rest = rest[:j]
+		}
+		if via, err := url.QueryUnescape(rest); err == nil && validVia(via) {
+			t.Via = via
+		}
+		s = s[:i]
+	}
+	if IsRelayAddr(s) {
+		// "https://relay.example/r/… K7Q X4R"
+		via, code, _ := strings.Cut(s, " ")
+		if !validVia(via) {
+			return t, false
+		}
+		t.Via, t.Code = strings.TrimSuffix(via, "/"), NormalizeCode(code)
+		return t, true
+	}
+	t.Addr, t.Code, ok = ParseJoin(s)
+	if !ok && t.Via != "" && t.Code == "" {
+		return t, false
+	}
+	return t, ok
+}
+
+// validVia reports whether a relay's address of a Jam is one.
+func validVia(via string) bool {
+	u, err := url.Parse(via)
+	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && strings.Contains(u.Path, "/r/")
+}
 
 // ParseJoin reads what a user typed to join: an invite, an address and a
 // code, or a code alone, which is looked for on the network. addr is ""

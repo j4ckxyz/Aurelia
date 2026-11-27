@@ -263,12 +263,25 @@ Beta; the player's bar then has a Jam button.
   queue.
 
 Jams work between computers that can reach one another: the same Wi-Fi
-or wired network, or the same tailnet (below). The host listens on TCP
+or wired network, the same tailnet (below), or any two networks through
+a relay of your own (below that). The host listens on TCP
 port 47475 (or another, when that is taken) and answers on UDP port
 47474. The first time, Windows asks whether to let Aurelia through its
 firewall, and macOS whether Aurelia may find devices on the local
 network: both need a yes. Networks that keep their devices apart, as in
 hotels and some offices, stop Jams too.
+
+### Jams through your relay
+
+A small server program, [`relay/`](relay/), run on a server of yours (a
+few megabytes of memory), lets a Jam be joined from any network. Set its
+address and key in Settings ▸ Beta ▸ **Jam relay**: a Jam you host then
+connects to it as well, says "Reachable through your relay", and its
+invite names the relay. A guest still tries the host's address on its own
+network first, and the relay only when the host is not there; a guest
+with only the code looks for it on the network, then on the relay set in
+its own settings. Guests need no key: the code, or the host's yes, lets
+them in. [relay/README.md](relay/README.md) says how to run it.
 
 ### Jams over Tailscale
 

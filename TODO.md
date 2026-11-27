@@ -150,6 +150,17 @@ real Tailscale (1.104.5): what was seen there is ticked.
 - [x] The Jam's activity, who did what (asked 2026-11-27): in the
       dialog, the latest first, and toasts of what others did to what
       plays; tested, and seen in the dialog (headless frames).
+- [ ] Jams through a relay of the user's own (asked 2026-11-27): relay/,
+      its own module (yamux over one upgraded connection from the host;
+      guests at /r/<room>/; codes looked up, slowed). Tested: the relay's
+      own tests; the app's host and guest through a stand-in relay; and
+      live on this computer, the real relay with two instances: an
+      invite whose network address answers is joined there, one whose
+      address does not (another network) through the relay, in step
+      within ±15 ms, songs from the host through it; a wrong key and a
+      relay not there shown on the host. ~9 MB of memory carrying a Jam.
+      Not tried: on the user's VPS behind HTTPS (Caddy or nginx), and
+      two real devices on different networks.
 - [ ] Two real devices still: Invite to a device whose Jams are off and
       "Turn on and join", Join from the list, Copy invite link for a
       device with Aurelia closed, someone else's device asking as who

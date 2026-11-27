@@ -93,7 +93,7 @@ func Join(ctx context.Context, addr string, hello Hello, hs Handlers) (*Guest, e
 // dial connects and says hello, until the host lets the guest in.
 func (g *Guest) dial(ctx context.Context, hello Hello, waiting func()) (*websocket.Conn, error) {
 	dctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	conn, _, err := websocket.Dial(dctx, "ws://"+g.addr+"/ws", &websocket.DialOptions{HTTPClient: client})
+	conn, _, err := websocket.Dial(dctx, wsBase(g.addr)+"/ws", &websocket.DialOptions{HTTPClient: client})
 	cancel()
 	if err != nil {
 		return nil, err
@@ -323,24 +323,24 @@ func (g *Guest) Leave() {
 
 // MediaURL is where a song of the queue is, for this guest to play.
 func (g *Guest) MediaURL(key string) string {
-	return "http://" + g.addr + "/media?k=" + escape(key) + "&t=" + g.tok()
+	return httpBase(g.addr) + "/media?k=" + escape(key) + "&t=" + g.tok()
 }
 
 // ImageURL is where a picture of a song of the queue is.
 func (g *Guest) ImageURL(server, item, tag string, px int) string {
-	return "http://" + g.addr + "/image?sv=" + escape(server) + "&item=" + escape(item) + "&tag=" + escape(tag) + "&px=" + strconv.Itoa(px) + "&t=" + g.tok()
+	return httpBase(g.addr) + "/image?sv=" + escape(server) + "&item=" + escape(item) + "&tag=" + escape(tag) + "&px=" + strconv.Itoa(px) + "&t=" + g.tok()
 }
 
 // LyricsURL is where the lyrics of a song of the queue are, as JSON.
 func (g *Guest) LyricsURL(key string) string {
-	return "http://" + g.addr + "/lyrics?k=" + escape(key) + "&t=" + g.tok()
+	return httpBase(g.addr) + "/lyrics?k=" + escape(key) + "&t=" + g.tok()
 }
 
 // serve uploads what the host asked.
 func (g *Guest) serve(f Fetch) {
 	ctx, cancel := context.WithTimeout(g.ctx, 30*time.Minute)
 	defer cancel()
-	u := "http://" + g.addr + "/push?id=" + escape(f.ID) + "&t=" + g.tok()
+	u := httpBase(g.addr) + "/push?id=" + escape(f.ID) + "&t=" + g.tok()
 	var body io.ReadCloser
 	size := int64(-1)
 	err := errors.New("this guest cannot share that")
