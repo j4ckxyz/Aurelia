@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -83,6 +84,13 @@ type jamState struct {
 	selfPaused   bool
 	selfPausedAt time.Time
 	sleptAt      time.Time
+	// The host's connection to the relay: its address there, why it is
+	// not there, and its stop. relayEdit and relayKeyEdit are the
+	// settings' fields, as typed.
+	relayAddr, relayErr     string
+	relayStop               context.CancelFunc
+	relayEdit, relayKeyEdit string
+	relayEdited             bool
 
 	// The guest's: the session its callbacks are of, the last state, and
 	// the queue it had before, which comes back as it leaves.
@@ -301,6 +309,47 @@ func (a *App) startJam() {
 	jamOn.Store(true)
 	a.jamPublish()
 	a.tailHosted()
+	a.jamRelay()
+}
+
+// jamRelay connects the Jam held here to the user's relay, as the
+// settings name one, or stops: it is reached through it from anywhere.
+func (a *App) jamRelay() {
+	j := &a.jam
+	if j.relayStop != nil {
+		j.relayStop()
+		j.relayStop = nil
+	}
+	j.relayAddr, j.relayErr = "", ""
+	h := j.host
+	base, key := strings.TrimSpace(a.settings.JamRelay), strings.TrimSpace(a.settings.JamRelayKey)
+	if h == nil || base == "" || key == "" {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	j.relayStop = cancel
+	j.relayErr = "Connecting…"
+	go h.ServeRelay(ctx, base, key, func(addr string, err error) {
+		a.update(func() {
+			if j.host != h || ctx.Err() != nil {
+				return
+			}
+			j.relayAddr, j.relayErr = addr, ""
+			if err != nil {
+				j.relayErr = friendly(err)
+			}
+		})
+	})
+}
+
+// jamInvite is the invite of the Jam held here: the address of this
+// computer on its network, and the relay's, when it is reached there.
+func (a *App) jamInvite() string {
+	h := a.jam.host
+	if h == nil {
+		return ""
+	}
+	return jam.InviteVia(h.Addr(), h.Code(), a.jam.relayAddr)
 }
 
 // endJam ends the Jam this app holds: the guests are told, and the songs
@@ -314,6 +363,7 @@ func (a *App) endJam() {
 	j.host = nil
 	jamOn.Store(false)
 	a.tailHosted()
+	a.jamRelay()
 	clear(a.tail.sent)
 	go h.Close()
 	for _, r := range j.requests {
@@ -373,11 +423,18 @@ func (a *App) dropForeign() {
 
 // joinJam joins a Jam: at addr, or the one of code found on the network
 // when addr is "".
-func (a *App) joinJam(addr, code string) {
+func (a *App) joinJam(addr, code string) { a.joinTarget(jam.Target{Addr: addr, Code: code}) }
+
+// joinTarget joins a Jam: on the network first, at the address given or
+// found for the code there, then through a relay, the invite's or, for a
+// code, the user's own.
+func (a *App) joinTarget(t jam.Target) {
+	addr, code := t.Addr, t.Code
 	j := &a.jam
 	if j.in() || j.joining {
 		return
 	}
+	relay := strings.TrimSpace(a.settings.JamRelay)
 	a.stopLooking()
 	ctx, cancel := context.WithCancel(context.Background())
 	j.joining, j.waiting, j.joinErr, j.cancel = true, false, "", cancel
@@ -441,10 +498,15 @@ func (a *App) joinJam(addr, code string) {
 	}
 	go func() {
 		defer cancel()
-		found := addr
-		if found == "" {
-			// The host of the code, on the networks of this computer.
-			fctx, fcancel := context.WithTimeout(ctx, 5*time.Second)
+		found, via := addr, t.Via
+		if found == "" && via == "" {
+			// The host of the code, on the networks of this computer; not
+			// as long with a relay to look on after.
+			wait := 5 * time.Second
+			if relay != "" {
+				wait = 3 * time.Second
+			}
+			fctx, fcancel := context.WithTimeout(ctx, wait)
 			jam.Discover(fctx, code, func(f jam.Found) {
 				if found == "" && f.Proto == jam.Proto {
 					found = f.Addr
@@ -453,11 +515,33 @@ func (a *App) joinJam(addr, code string) {
 			})
 			fcancel()
 		}
-		var err error
-		if found == "" {
-			err = errors.New("No Jam with that code was found on this network. Ask the host for their invite, which has their address.")
-		} else {
+		// With a relay to fall back on, the network's address is tried
+		// briefly: from another network, it is not there.
+		if found != "" && via != "" && !reachable(ctx, found, 2500*time.Millisecond) {
+			found = ""
+		}
+		var err, lookErr error
+		if found == "" && via == "" && relay != "" && code != "" {
+			lctx, lcancel := context.WithTimeout(ctx, 10*time.Second)
+			via, lookErr = jam.LookupRelay(lctx, relay, code)
+			lcancel()
+		}
+		switch {
+		case found != "":
 			g, err = jam.Join(ctx, found, hello, hs)
+			var denied *jam.ErrDenied
+			if err != nil && via != "" && ctx.Err() == nil && !errors.As(err, &denied) {
+				found = ""
+				g, err = jam.Join(ctx, via, hello, hs)
+			}
+		case via != "":
+			g, err = jam.Join(ctx, via, hello, hs)
+		case lookErr != nil:
+			err = errors.New("No Jam with that code was found on this network, nor on your relay (" + friendly(lookErr) + ").")
+		case relay != "":
+			err = errors.New("No Jam with that code was found on this network, nor on your relay.")
+		default:
+			err = errors.New("No Jam with that code was found on this network. Ask the host for their invite, which has their address.")
 		}
 		a.update(func() {
 			if j.cancel == nil && err == nil {
@@ -473,6 +557,8 @@ func (a *App) joinJam(addr, code string) {
 				switch {
 				case errors.As(err, &denied):
 					j.joinErr = denied.Why
+				case found == "" && via != "":
+					j.joinErr = "Could not reach the Jam through the relay: " + friendly(err) + ". Is the host's Jam still on?"
 				case addr == "":
 					j.joinErr = err.Error()
 				case tailAddr(found):
@@ -1608,4 +1694,16 @@ func (a *App) jamSlept(sleeping bool) {
 	if d := j.selfPausedAt.Sub(j.sleptAt); d > -30*time.Second && d < 30*time.Second {
 		a.jamCatchUp()
 	}
+}
+
+// reachable reports whether something listens at addr, within wait.
+func reachable(ctx context.Context, addr string, wait time.Duration) bool {
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	c, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
 }

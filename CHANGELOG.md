@@ -1,5 +1,16 @@
 # Changes
 
+## 0.9.0
+
+- Jams from any network, through a relay of your own: `relay/` is a
+  small server program (a few megabytes of memory) to run on a server
+  of yours, behind HTTPS. Set its address and key in Settings ▸ Beta ▸
+  Jam relay, and a Jam you host is reached through it as well: its
+  invite works on any network. Guests try the host on their own network
+  first, and the relay only when it is not there; a code not found on
+  the network is looked for on the relay. Guests need no key: the Jam's
+  code, or the host's yes, lets them in.
+
 ## 0.8.2
 
 - Jams: pausing pauses guests at the very place the host did, and

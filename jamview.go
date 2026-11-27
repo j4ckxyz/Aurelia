@@ -226,14 +226,14 @@ func (a *App) jamStartView(c *ui.Context) {
 		if in.Submitted() {
 			submit = true
 		}
-		_, _, ok := jam.ParseJoin(j.input)
+		_, ok := jam.ParseTarget(j.input)
 		if a.pillButton(c, "", "Join", true).Disabled(!ok || j.joining).Clicked() {
 			submit = true
 		}
 	})
 	if submit && !j.joining {
-		if addr, code, ok := jam.ParseJoin(j.input); ok {
-			a.joinJam(addr, code)
+		if t, ok := jam.ParseTarget(j.input); ok {
+			a.joinTarget(t)
 		} else {
 			j.joinErr = "A code has six letters and numbers, as K7Q X4R."
 		}
@@ -275,8 +275,12 @@ func (a *App) jamHostView(c *ui.Context) {
 	j := &a.jam
 	h := j.host
 	p := a.pal
-	ui.Text(c, "Others join from Aurelia's Jam button with this code, or by finding your Jam nearby.").TextColor(p.muted).MaxLines(3)
-	invite := jam.Invite(h.Addr(), h.Code())
+	intro := "Others join from Aurelia's Jam button with this code, or by finding your Jam nearby."
+	if j.relayAddr != "" {
+		intro = "Others join from Aurelia's Jam button with this code, from anywhere with the invite."
+	}
+	ui.Text(c, intro).TextColor(p.muted).MaxLines(3)
+	invite := a.jamInvite()
 	ui.Row(c).Gap(12).Padding(12, 16).Radius(p.radius + 2).Background(p.surface.Alpha(0.6)).Children(func() {
 		ui.Text(c, jam.ShowCode(h.Code())).FontSize(28).FontWeight(800).LetterSpacing(2).FontFeatures("tnum").Selectable().Grow(1)
 		if a.pillButton(c, "copy", "Copy invite", false).Tooltip(invite).Clicked() {
@@ -286,6 +290,12 @@ func (a *App) jamHostView(c *ui.Context) {
 			a.toast("Invite copied: paste it into the Jam's Join box")
 		}
 	})
+	switch {
+	case j.relayAddr != "":
+		a.jamLine(c, "circle-check", p.success, "Reachable through your relay: the invite works on any network.")
+	case j.relayErr != "":
+		a.jamLine(c, "circle-alert", p.warning, "Your relay: "+j.relayErr+". On this network, the Jam works as ever.")
+	}
 	ui.Text(c, "PEOPLE").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Margin(4, 0, 0)
 	ui.Column(c).Gap(2).Children(func() {
 		a.memberRow(c, "host", a.jamName()+" (you)", "Host", false)
@@ -424,6 +434,45 @@ func (a *App) jamSettings(c *ui.Context) {
 		}
 	})
 	a.tailSettings(c)
+	a.jamRelaySettings(c)
+}
+
+// jamLine is a line of how the Jam is reached.
+func (a *App) jamLine(c *ui.Context, glyph string, color ui.Color, text string) {
+	ui.Row(c).Gap(8).AlignItems(ui.Start).Children(func() {
+		ui.Icon(c, icon(glyph)).Size(14, 14).TextColor(color).Margin(2, 0, 0).Shrink(0)
+		ui.Text(c, text).FontSize(12).TextColor(a.pal.muted).Grow(1).MinWidth(0).MaxLines(3)
+	})
+}
+
+// jamRelaySettings is the user's relay, which Jams are reached through
+// from any network.
+func (a *App) jamRelaySettings(c *ui.Context) {
+	j := &a.jam
+	if !j.relayEdited {
+		j.relayEdit, j.relayKeyEdit = a.settings.JamRelay, a.settings.JamRelayKey
+	}
+	a.setting(c, "Jam relay", "Your own relay (relay/ in Aurelia's source), on a server of yours: Jams you host are reached through it from any network, and codes not found on this one are looked for there. Its address and key.", func() {
+		ui.Column(c).Gap(6).Width(250).Children(func() {
+			if ui.TextInput(c.Key("jam-relay"), &j.relayEdit).Placeholder("https://relay.example.com").Label("Relay address").Changed() {
+				j.relayEdited = true
+			}
+			if ui.TextInput(c.Key("jam-relay-key"), &j.relayKeyEdit).Password().Placeholder("Key").Label("Relay key").Changed() {
+				j.relayEdited = true
+			}
+		})
+		changed := strings.TrimSpace(j.relayEdit) != a.settings.JamRelay || strings.TrimSpace(j.relayKeyEdit) != a.settings.JamRelayKey
+		if a.pillButton(c, "", "Save", changed).Disabled(!changed).Clicked() {
+			base := strings.TrimSuffix(strings.TrimSpace(j.relayEdit), "/")
+			if base != "" && !strings.HasPrefix(base, "https://") && !strings.HasPrefix(base, "http://") {
+				base = "https://" + base
+			}
+			a.settings.JamRelay, a.settings.JamRelayKey = base, strings.TrimSpace(j.relayKeyEdit)
+			j.relayEdit, j.relayEdited = base, false
+			a.saveSettings()
+			a.jamRelay()
+		}
+	})
 }
 
 // jamOnlyView is the window of someone not signed in, in a Jam: what

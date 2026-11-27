@@ -215,9 +215,15 @@ func (a *App) debug(dir, line string) {
 				a.startJam()
 			case "join":
 				a.settings.Jam = true
-				if addr, code, ok := jam.ParseJoin(rest); ok {
-					a.joinJam(addr, code)
+				if t, ok := jam.ParseTarget(rest); ok {
+					a.joinTarget(t)
 				}
+			case "relay":
+				// "jam relay <url> <key>": the user's relay, as Settings
+				// sets it; "jam relay" alone, none.
+				base, key, _ := strings.Cut(rest, " ")
+				a.settings.JamRelay, a.settings.JamRelayKey = base, key
+				a.jamRelay()
 			case "ask":
 				// Joins the Jam at an address, without the code: its host
 				// is asked, or over a tailnet, lets in a device of its own.
@@ -247,9 +253,9 @@ func (a *App) debug(dir, line string) {
 				role := "none"
 				switch {
 				case j.host != nil:
-					role = "host code=" + j.host.Code() + " invite=" + jam.Invite(j.host.Addr(), j.host.Code())
+					role = "host code=" + j.host.Code() + " invite=" + a.jamInvite() + " relay=" + j.relayAddr + " relayErr=" + strconv.Quote(j.relayErr)
 				case j.guest != nil:
-					role = "guest of " + j.hostName
+					role = "guest of " + j.hostName + " at=" + j.guest.Addr()
 				}
 				st := a.player.state()
 				out = fmt.Sprintf("role=%s away=%v joining=%v waiting=%v err=%q nearby=%d looking=%v members=%d requests=%d open=%v\n", role, j.away, j.joining, j.waiting, j.joinErr, len(j.nearby), j.looking != nil, len(j.members), len(j.requests), j.open)
