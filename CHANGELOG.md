@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## 0.8.0
 
 - Jams, in beta (Settings ▸ Beta): listening together with people on
   the same network, as Spotify's Jams. One person hosts and the others
