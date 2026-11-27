@@ -75,7 +75,7 @@ func (a *App) playerBar(c *ui.Context) {
 			if song.Favorite {
 				glyph, label = "heart-fill", "Remove from Favorites"
 			}
-			if !tight && a.toggleIcon(c, glyph, label, song.Favorite, 30, 16).Clicked() {
+			if !tight && !a.foreign(song) && a.toggleIcon(c, glyph, label, song.Favorite, 30, 16).Clicked() {
 				a.setFavorite(song.ID, &song.Favorite, !song.Favorite)
 			}
 		})
@@ -91,8 +91,8 @@ func (a *App) playerBar(c *ui.Context) {
 		}
 		middle.Children(func() {
 			ui.Row(c).Justify(ui.Center).Gap(8).Children(func() {
-				if !tight && a.toggleIcon(c, "shuffle", "Shuffle", a.settings.Shuffle, 32, 16).Clicked() {
-					pl.setShuffle(!a.settings.Shuffle)
+				if !tight && a.toggleIcon(c, "shuffle", "Shuffle", pl.shuffled(), 32, 16).Clicked() {
+					pl.setShuffle(!pl.shuffled())
 				}
 				if a.iconButton(c, "skip-back-fill", "Previous", 32, 17).Disabled(song == nil).Clicked() {
 					pl.previous()
@@ -102,13 +102,13 @@ func (a *App) playerBar(c *ui.Context) {
 					pl.skip()
 				}
 				glyph, label := "repeat", "Repeat"
-				switch a.settings.Repeat {
+				switch pl.repeat() {
 				case repeatAll:
 					label = "Repeat all"
 				case repeatOne:
 					glyph, label = "repeat-1", "Repeat one"
 				}
-				if !tight && a.toggleIcon(c, glyph, label, a.settings.Repeat != repeatOff, 32, 16).Clicked() {
+				if !tight && a.toggleIcon(c, glyph, label, pl.repeat() != repeatOff, 32, 16).Clicked() {
 					pl.cycleRepeat()
 				}
 			})
@@ -130,6 +130,9 @@ func (a *App) playerBar(c *ui.Context) {
 			if width >= queueMinW && a.toggleIcon(c, "list-end", "Queue", a.settings.QueueOpen, 32, 16).Clicked() {
 				a.settings.QueueOpen = !a.settings.QueueOpen
 				a.saveSettings()
+			}
+			if !tight {
+				a.jamButton(c)
 			}
 			a.playerMore(c, tight)
 			a.volume(c, roomy)
@@ -157,12 +160,12 @@ func (a *App) playerMore(c *ui.Context, tight bool) {
 	}
 	b.Menu(func(m *ui.Menu) {
 		if tight {
-			if m.Item("Shuffle").Checked(a.settings.Shuffle).Chosen() {
-				pl.setShuffle(!a.settings.Shuffle)
+			if m.Item("Shuffle").Checked(pl.shuffled()).Chosen() {
+				pl.setShuffle(!pl.shuffled())
 			}
 			m.Submenu("Repeat", func(m *ui.Menu) {
 				for mode, label := range []string{repeatOff: "Off", repeatAll: "All", repeatOne: "One"} {
-					if m.Item(label).Checked(a.settings.Repeat == mode).Chosen() {
+					if m.Item(label).Checked(pl.repeat() == mode).Chosen() {
 						pl.setRepeat(mode)
 					}
 				}
@@ -170,6 +173,11 @@ func (a *App) playerMore(c *ui.Context, tight bool) {
 			m.Separator()
 		}
 		m.Submenu("Sleep Timer", a.sleepMenu)
+		if a.settings.Jam || a.jam.in() {
+			if m.Item("Jam…").Chosen() {
+				a.openJam()
+			}
+		}
 		m.Submenu("Play On", a.deviceMenu)
 		m.Submenu("Spatial Audio", a.spatialMenu)
 		if m.Item("Vinyl").Checked(a.settings.Vinyl).Chosen() {
@@ -370,10 +378,10 @@ func (a *App) queuePanel(c *ui.Context) {
 		under := c.TitleBar().Right
 		ui.Row(c).Height(topBarH).Shrink(0).Padding(0, max(10, under+6), 0, 18).DragWindow().Children(func() {
 			ui.Text(c, "Queue").FontSize(15).FontWeight(700).Grow(1).SingleLine().MinWidth(0)
-			if len(pl.queue) > 0 && a.textButton(c, "Save").Clicked() {
+			if len(pl.queue) > 0 && a.signedIn() && a.textButton(c, "Save").Clicked() {
 				a.saveQueueAsPlaylist()
 			}
-			if len(pl.queue) > pl.index+1 && pl.index >= 0 && !pl.farOwns() {
+			if len(pl.queue) > pl.index+1 && pl.index >= 0 && !pl.farOwns() && a.jamControls() {
 				if a.textButton(c, "Clear").Clicked() {
 					a.clearUpcoming()
 				}
@@ -417,6 +425,10 @@ func (a *App) queuePanel(c *ui.Context) {
 			state.Reorder = nil
 			ui.Text(c, "Songs are moved and removed on "+pl.far.dev.Title()+".").FontSize(12).TextColor(p.muted).Padding(0, 18, 8).Shrink(0)
 		}
+		if !a.jamControls() {
+			state.Reorder = nil
+			ui.Text(c, "Only "+a.jam.hostName+" moves and removes songs in this Jam.").FontSize(12).TextColor(p.muted).Padding(0, 18, 8).Shrink(0)
+		}
 		// A click chooses a song and a double click plays it: the list
 		// tells, so that its rows stay free to be dragged.
 		chosen := &a.pages.queueChosen
@@ -442,8 +454,7 @@ func (a *App) queuePanel(c *ui.Context) {
 			pl.remove(remove)
 			*chosen = -1
 		case list.Submitted() && *chosen >= 0 && !rows.header(*chosen):
-			pl.failures = 0
-			pl.playIndex(rows.at(*chosen))
+			pl.jump(rows.at(*chosen))
 			*chosen = -1
 		}
 	})
@@ -526,7 +537,7 @@ func (a *App) queueRow(c *ui.Context, s *library.Song, at int) (removed bool) {
 	p := a.pal
 	pl := a.player
 	current := at == pl.index
-	fixed := current || pl.farOwns() // what stays in the queue
+	fixed := current || pl.farOwns() || !a.jamControls() // what stays in the queue
 	row := ui.Row(c).Height(48).Padding(0, 8, 0, 10).Gap(10).Radius(p.radius).Margin(0, 8)
 	hovered := row.Hovered()
 	if hovered {
@@ -539,7 +550,11 @@ func (a *App) queueRow(c *ui.Context, s *library.Song, at int) (removed bool) {
 			if current {
 				title.TextColor(p.accent)
 			}
-			ui.Text(c, s.Artist).FontSize(12).TextColor(p.muted).SingleLine()
+			sub := s.Artist
+			if by := a.jam.by[s]; by != "" {
+				sub += " · added by " + by
+			}
+			ui.Text(c, sub).FontSize(12).TextColor(p.muted).SingleLine()
 		})
 		if hovered && !fixed {
 			if a.iconButton(c, "x", "Remove from the queue", 26, 14).Clicked() {
@@ -550,8 +565,8 @@ func (a *App) queueRow(c *ui.Context, s *library.Song, at int) (removed bool) {
 		}
 	})
 	row.ContextMenu(func(m *ui.Menu) {
-		if !current && m.Item("Play").Chosen() {
-			pl.playIndex(at)
+		if !current && a.jamControls() && m.Item("Play").Chosen() {
+			pl.jump(at)
 		}
 		if !fixed && m.Item("Remove from Queue").Chosen() {
 			removed = true
@@ -579,6 +594,14 @@ func (a *App) lyricLines(s *library.Song) (lines []jellyfin.LyricLine, known boo
 	}
 	if lines, ok := ly.bySong[s.ID]; ok {
 		return lines, true
+	}
+	if u := a.jamLyricsURL(s); u != "" {
+		// A song of another's server, in a Jam: they have its lyrics.
+		if !ly.asked[s.ID] {
+			ly.asked[s.ID] = true
+			a.fetchJamLyrics(s, u)
+		}
+		return nil, false
 	}
 	cl := a.clientNow()
 	if !s.HasLyrics {

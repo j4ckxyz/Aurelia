@@ -50,6 +50,10 @@ func (a *App) frame(c *ui.Context) {
 		c.AddToast(t)
 	}
 	toasts = toasts[:0]
+	for _, id := range closedToasts {
+		c.CloseToast(id)
+	}
+	closedToasts = closedToasts[:0]
 	a.search.follow(a)
 	if a.downloads.busy() {
 		c.After(300 * time.Millisecond) // the rings of what downloads fill
@@ -67,7 +71,13 @@ func (a *App) view(c *ui.Context) {
 		return
 	}
 	if !a.signedIn() {
+		if a.jam.guest != nil {
+			a.jamOnlyView(c)
+			return
+		}
 		a.loginPage(c)
+		a.jamDialog(c)
+		a.tailInviteDialog(c)
 		a.toastLayer(c, 16)
 		return
 	}
@@ -117,16 +127,22 @@ func (a *App) view(c *ui.Context) {
 			}
 		})
 		a.farStrip(c)
+		a.jamStrip(c)
 		a.playerBar(c)
 	})
 	bottom := float32(playerH + 14)
 	if a.player.far != nil {
 		bottom += farStripH
 	}
+	if a.jam.in() {
+		bottom += jamStripH
+	}
 	a.shareDialog(c)
 	a.infoDialog(c)
 	a.promptDialog(c)
 	a.pickerDialog(c)
+	a.jamDialog(c)
+	a.tailInviteDialog(c)
 	a.toastLayer(c, bottom)
 }
 
@@ -383,11 +399,12 @@ func (a *App) picture(id, tag string, dip float32) *ui.Bitmap {
 	if a.pictures != nil {
 		return a.pictures(id)
 	}
-	if id == "" || tag == "" || a.client == nil {
+	px := a.pixels(dip)
+	u := a.imageURL(id, tag, px)
+	if u == "" {
 		return nil
 	}
-	px := a.pixels(dip)
-	return a.images.get(imageKey(id, tag, px), a.client.ImageURL(id, "Primary", tag, px))
+	return a.images.get(imageKey(id, tag, px), u)
 }
 
 // art builds the picture of an item in a box the caller sizes: the
@@ -697,13 +714,30 @@ func (a *App) artistOf(ids ...[]string) string {
 
 // songMenu is the menu of a song, wherever it shows.
 func (a *App) songMenu(m *ui.Menu, s *library.Song) {
+	guest := a.jamGuest() // which tells of the songs it adds itself
 	if m.Item("Play Next").Chosen() {
 		a.player.playNext([]*library.Song{s})
-		a.toast("Playing next")
+		if !guest {
+			a.toast("Playing next")
+		}
 	}
 	if m.Item("Add to Queue").Chosen() {
 		a.player.enqueue([]*library.Song{s})
-		a.toast("Added to the queue")
+		if !guest {
+			a.toast("Added to the queue")
+		}
+	}
+	if a.foreign(s) {
+		// A song of another's server, in a Jam: this server knows nothing
+		// of it.
+		m.Separator()
+		if m.Item("Share as a Picture…").Chosen() {
+			a.shareSong(s)
+		}
+		if m.Item("Song Info…").Chosen() {
+			a.openInfo(s)
+		}
+		return
 	}
 	a.addToPlaylistMenu(m, []*library.Song{s}, s.Name, "")
 	m.Separator()

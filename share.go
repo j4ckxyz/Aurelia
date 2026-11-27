@@ -116,13 +116,13 @@ func (a *App) loadShareCover(c *ui.Context) {
 		a.setShareCover(a.covers(sh.imageID))
 		return
 	}
-	cl := a.clientNow()
-	if cl == nil || sh.imageTag == "" {
-		return
-	}
 	const px = 1200
 	id := sh.imageID
-	path := a.images.file(imageKey(id, sh.imageTag, px), cl.ImageURL(id, "Primary", sh.imageTag, px))
+	u := a.imageURL(id, sh.imageTag, px)
+	if u == "" {
+		return
+	}
+	path := a.images.file(imageKey(id, sh.imageTag, px), u)
 	if path == "" {
 		c.After(200 * time.Millisecond) // it is being fetched
 		return

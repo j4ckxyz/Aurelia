@@ -48,7 +48,10 @@ func TestParseProxy(t *testing.T) {
 		}
 	}
 	for host, want := range map[string]bool{"localhost": true, "127.0.0.1": true, "192.168.1.20": true, "10.1.2.3": true, "::1": true,
-		"music.example.com": false, "8.8.8.8": false, "jellyfin.local": false} {
+		"music.example.com": false, "8.8.8.8": false, "jellyfin.local": false,
+		// A tailnet's, which only Tailscale reaches: never through a proxy.
+		"100.101.102.103": true, "fd7a:115c:a1e0::ca01:f51e": true, "studio.tail1234.ts.net": true, "studio.tail1234.ts.net.": true,
+		"100.128.0.1": false, "ts.net.example.com": false} {
 		if got := local(host); got != want {
 			t.Errorf("local(%q) = %v", host, got)
 		}

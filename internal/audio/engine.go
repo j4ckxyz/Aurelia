@@ -246,7 +246,7 @@ func NewEngine(rate int, deviceID string, onEvent func(Event)) (*Engine, error) 
 	// A short buffer on the device's side: the ring is the real one, and
 	// what the device holds is what a track change and the position lag
 	// by.
-	player.SetBufferSize(rate / 8 * 8)
+	player.SetBufferSize(int(int64(rate)*int64(deviceLag)/int64(time.Second)) * 8)
 	e.player = player
 	e.start()
 	return e, nil
@@ -281,6 +281,14 @@ func (e *Engine) start() {
 		}
 	}()
 }
+
+// deviceLag is how much sound the device's own buffer holds: what is
+// played is heard that much later, which the position allows for.
+const deviceLag = time.Second / 8
+
+// Lag returns how long a track played from a place takes to be heard
+// there: what its position starts behind by.
+func (e *Engine) Lag() time.Duration { return deviceLag }
 
 // Rate returns the rate of the device.
 func (e *Engine) Rate() int { return e.rate }

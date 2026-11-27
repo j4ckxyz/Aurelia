@@ -119,6 +119,21 @@ type Settings struct {
 	// OthersPlaylists shows the playlists other people of the server
 	// made public, among the user's own.
 	OthersPlaylists bool `json:"othersPlaylists,omitempty"`
+	// Jam turns on Jams, in beta: listening together on one network.
+	// JamLocked keeps the guests of the user's Jams to adding songs, and
+	// JamHidden keeps them from showing to those nearby, who then need
+	// the code.
+	Jam       bool `json:"jam,omitempty"`
+	JamLocked bool `json:"jamLocked,omitempty"`
+	JamHidden bool `json:"jamHidden,omitempty"`
+	// TailnetInvitesOff keeps the devices of the user's tailnet from
+	// seeing that Aurelia is open here and inviting the user to Jams,
+	// which they may, the beta on or not, unless it is set.
+	// TailnetSeen are the devices of the tailnet that were found running
+	// Aurelia, by Tailscale's ID of them: they are listed while Aurelia
+	// is closed there, to be sent an invite link.
+	TailnetInvitesOff bool     `json:"tailnetInvitesOff,omitempty"`
+	TailnetSeen       []string `json:"tailnetSeen,omitempty"`
 }
 
 // The caches are small by default: the pictures of a library, and the

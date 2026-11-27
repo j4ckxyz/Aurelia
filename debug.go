@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"aurelia/internal/jam"
 	"aurelia/internal/library"
 )
 
@@ -198,6 +199,129 @@ func (a *App) debug(dir, line string) {
 			out += "system: " + strings.Join(strings.Fields(a.system.describe()), " ") + " (told " + a.told + ")\n"
 		})
 		os.WriteFile(filepath.Join(dir, "state"), []byte(out), 0o644)
+	case "jam":
+		// "jam start", "jam join <invite or code>", "jam ask <address>"
+		// (joins without the code), "jam leave", "jam end",
+		// "jam open", "jam nearby" (joins the first Jam found), "jam allow"
+		// (lets in the first who asks), "jam add <song name>" (to the
+		// queue, as a guest asks), and "jam state", written to the file
+		// jam.
+		verb, rest, _ := strings.Cut(arg, " ")
+		var out string
+		do(func() {
+			switch verb {
+			case "start":
+				a.settings.Jam = true
+				a.startJam()
+			case "join":
+				a.settings.Jam = true
+				if addr, code, ok := jam.ParseJoin(rest); ok {
+					a.joinJam(addr, code)
+				}
+			case "ask":
+				// Joins the Jam at an address, without the code: its host
+				// is asked, or over a tailnet, lets in a device of its own.
+				a.settings.Jam = true
+				a.joinJam(rest, "")
+			case "nearby":
+				// Joins the first Jam found nearby, asking its host.
+				if len(a.jam.nearby) > 0 {
+					a.joinJam(a.jam.nearby[0].Addr, "")
+				}
+			case "allow":
+				if len(a.jam.requests) > 0 {
+					a.answerJam(a.jam.requests[0].ID, true)
+				}
+			case "leave", "end":
+				a.stopJam()
+			case "open":
+				a.openJam()
+			case "add":
+				for i := range a.lib.Songs {
+					if s := &a.lib.Songs[i]; strings.EqualFold(s.Name, rest) {
+						a.player.enqueue([]*library.Song{a.lib.Song(s.ID)})
+					}
+				}
+			case "state":
+				j := &a.jam
+				role := "none"
+				switch {
+				case j.host != nil:
+					role = "host code=" + j.host.Code() + " invite=" + jam.Invite(j.host.Addr(), j.host.Code())
+				case j.guest != nil:
+					role = "guest of " + j.hostName
+				}
+				st := a.player.state()
+				out = fmt.Sprintf("role=%s away=%v joining=%v waiting=%v err=%q nearby=%d looking=%v members=%d requests=%d open=%v\n", role, j.away, j.joining, j.waiting, j.joinErr, len(j.nearby), j.looking != nil, len(j.members), len(j.requests), j.open)
+				for _, m := range j.members {
+					out += fmt.Sprintf("member %q away=%v host=%v peer=%+v\n", m.Name, m.Away, m.Host, m.Peer)
+				}
+				out += fmt.Sprintf("now=%d position=%dms paused=%v buffering=%v index=%d queue=%d\n", time.Now().UnixMilli(), st.Position.Milliseconds(), st.Paused, st.Buffering, a.player.index, len(a.player.queue))
+				for i, s := range a.player.queue {
+					mark := " "
+					if i == a.player.index {
+						mark = ">"
+					}
+					out += fmt.Sprintf("%s %s %q foreign=%v by=%q\n", mark, a.songKey(s), s.Name, a.foreign(s), j.by[s])
+				}
+			}
+		})
+		if verb == "state" {
+			os.WriteFile(filepath.Join(dir, "jam"), []byte(out), 0o644)
+		}
+	case "tail":
+		// "tail state", written to the file tail; "tail invite <device>",
+		// "tail join <device>" (the Jam it holds), "tail accept" (the
+		// first invite come), "tail copy" (the invite link, into the file
+		// tail too).
+		verb, rest, _ := strings.Cut(arg, " ")
+		var out string
+		do(func() {
+			t := &a.tail
+			pick := func() *tailDevice {
+				for _, d := range a.tailDevices() {
+					if strings.EqualFold(d.Name, rest) || d.ID == rest {
+						return &d
+					}
+				}
+				return nil
+			}
+			switch verb {
+			case "invite":
+				if d := pick(); d != nil {
+					a.tailInvite(d.Device)
+				}
+			case "join":
+				if d := pick(); d != nil {
+					a.tailJoin(*d)
+				}
+			case "accept":
+				if len(t.invites) > 0 {
+					a.answerInvite(t.invites[0].id, true)
+				}
+			case "copy":
+				out = a.tailInviteLink() + "\n"
+			case "state":
+				out = fmt.Sprintf("known=%v running=%v state=%s self=%q ips=%v door=%v doorErr=%q probing=%v probed=%v invites=%d\n",
+					t.known, t.net.Running, t.net.State, t.net.Self.Name, t.net.Self.IPs, t.doorOn, t.doorErr, t.probing, !t.probedAt.IsZero(), len(t.invites))
+				for _, i := range t.invites {
+					out += fmt.Sprintf("invite from %q (%s) at %s code=%s\n", inviter(i.from), i.from.Who(), i.addr, i.code)
+				}
+				for _, d := range a.tailDevices() {
+					about := "-"
+					if d.about != nil {
+						about = fmt.Sprintf("%+v", *d.about)
+						if d.about.Live != nil {
+							about += fmt.Sprintf(" live=%+v", *d.about.Live)
+						}
+					}
+					out += fmt.Sprintf("device %q owner=%q sharee=%v online=%v seen=%v member=%v sent=%q about=%s\n", d.Name, d.Owner.Label(), d.Sharee, d.Online, d.seen, d.member, t.sent[d.ID], about)
+				}
+			}
+		})
+		if out != "" {
+			os.WriteFile(filepath.Join(dir, "tail"), []byte(out), 0o644)
+		}
 	case "scroll":
 		// "scroll albums 200" scrolls a long list row by row, a frame
 		// each, for MYGO_FRAME_STATS to time real frames.

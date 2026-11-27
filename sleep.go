@@ -88,6 +88,12 @@ func (p *player) sleepNow() {
 	if !p.playing() {
 		return
 	}
+	if p.app.jamGuest() {
+		// The music stops here, not for everyone: this one leaves.
+		p.app.leaveJam(true)
+		p.app.toast("Sleep timer: you left the Jam")
+		return
+	}
 	e := p.engine
 	if e == nil || p.far != nil {
 		p.toggle()
@@ -125,6 +131,9 @@ func (p *player) sleepNow() {
 func (p *player) sleepEnded() {
 	if p.sleep.mode == sleepSong || p.sleep.mode == sleepAlbum {
 		p.sleep = sleepTimer{}
+		if p.app.jamGuest() {
+			p.app.leaveJam(true)
+		}
 		p.app.toast("Sleep timer: the music has stopped")
 	}
 }

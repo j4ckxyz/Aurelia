@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"aurelia/internal/jellyfin"
+	"aurelia/internal/tailnet"
 )
 
 // A proxy, when the settings name one, carries everything Aurelia asks of
@@ -155,13 +157,15 @@ func proxyFor(req *http.Request) (*url.URL, error) {
 }
 
 // local reports whether a host is this computer, or an address of a
-// private network.
+// private network: a tailnet's too, which only Tailscale reaches, as by
+// its MagicDNS names. A Jam's songs, which go between devices of a
+// tailnet, are never carried by a proxy.
 func local(host string) bool {
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(strings.TrimSuffix(host, "."), ".ts.net") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+	ip, err := netip.ParseAddr(host)
+	return err == nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || tailnet.IsTailscaleIP(ip))
 }
 
 // parseProxy reads a proxy's address as a user types it:

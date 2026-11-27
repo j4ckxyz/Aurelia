@@ -70,7 +70,7 @@ func (p *player) similarCheck() {
 	a := p.app
 	cur := p.current()
 	switch {
-	case !a.settings.Autoplay, cur == nil, p.far != nil, p.similarFor == cur.ID:
+	case !a.settings.Autoplay, cur == nil, p.far != nil, a.jam.guest != nil, p.similarFor == cur.ID:
 		return
 	case p.followingIndex() >= 0:
 		return // there is more, or it repeats

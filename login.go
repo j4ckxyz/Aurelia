@@ -94,13 +94,15 @@ func (a *App) loginPage(c *ui.Context) {
 						ui.Text(c, f.err).TextColor(p.text).Grow(1)
 					})
 				}
-				if !f.proxyShown {
-					ui.Row(c).Justify(ui.Center).Children(func() {
-						if a.textButton(c, "Connect through a proxy").Clicked() {
-							f.proxyShown = true
-						}
-					})
-				}
+				ui.Row(c).Justify(ui.Center).Gap(4).Wrap().Children(func() {
+					if !f.proxyShown && a.textButton(c, "Connect through a proxy").Clicked() {
+						f.proxyShown = true
+					}
+					// Someone without a server listens in another's Jam.
+					if a.textButton(c, "Join a friend's Jam (beta)").Clicked() {
+						a.openJam()
+					}
+				})
 			})
 		})
 	})

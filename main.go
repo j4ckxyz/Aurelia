@@ -149,6 +149,8 @@ func (a *App) open() {
 			a.mediaKeys()
 		}()
 		go a.keepHouse()
+		go a.jamClock()
+		a.startTail()
 	}
 	a.debugHook()
 }
@@ -172,6 +174,16 @@ func (a *App) keepHouse() {
 				a.pollFar()
 			}
 		})
+	}
+}
+
+// jamClock keeps a Jam going, four times a second whether or not the
+// window draws: the host tells what changed, and a guest keeps in step.
+func (a *App) jamClock() {
+	for range time.Tick(250 * time.Millisecond) {
+		if jamOn.Load() {
+			mygo.RunOnMain(a.jamTick)
+		}
 	}
 }
 
@@ -229,6 +241,7 @@ func (a *App) quit() {
 		p.engine.Close()
 	}
 	a.saveSettings()
+	a.closeTail()
 	a.queueWrites.Wait() // the queue's file is written on another goroutine
 }
 

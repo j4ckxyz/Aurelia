@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"aurelia/internal/audio"
+	"aurelia/internal/jam"
 	"aurelia/internal/jellyfin"
 	"aurelia/internal/library"
 )
@@ -72,6 +73,9 @@ type player struct {
 	// similarFor is the song that songs like it were asked for, once, as
 	// it played last.
 	similarFor string
+	// fromRow is set while a song's row plays it: a guest of a Jam then
+	// adds that song alone, not the rest of its list.
+	fromRow bool
 }
 
 func newPlayer(app *App) *player {
@@ -169,6 +173,10 @@ func (p *player) trackOf(s *library.Song) *audio.Track {
 	app := p.app
 	quality := jellyfin.Quality{MaxBitrate: app.settings.MaxBitrate * 1000}
 	id := s.ID
+	if open := app.jamOpener(s); open != nil {
+		// A song of another's server, in a Jam.
+		return &audio.Track{ID: id, Duration: s.Duration(), GainDB: s.GainDB, Groove: app.grooveOf(s), Open: open}
+	}
 	return &audio.Track{
 		ID: id, Duration: s.Duration(), GainDB: s.GainDB, Groove: app.grooveOf(s),
 		Open: func() (*audio.File, error) {
@@ -195,6 +203,17 @@ func (p *player) play(songs []*library.Song, start int) {
 	if len(songs) == 0 {
 		return
 	}
+	if p.app.jamGuest() {
+		// A guest adds to the Jam: the song of a row, or the list.
+		start = max(0, min(start, len(songs)-1))
+		if p.fromRow {
+			songs = songs[start : start+1]
+		} else {
+			songs = songs[start:]
+		}
+		p.app.askAdd(songs, false)
+		return
+	}
 	if p.app.settings.Shuffle {
 		p.app.settings.Shuffle = false
 		p.app.saveSettings()
@@ -209,6 +228,10 @@ func (p *player) play(songs []*library.Song, start int) {
 // playWithSimilar plays a song on its own, then songs the server finds
 // like it, rather than whatever else was beside it, as search results.
 func (p *player) playWithSimilar(s *library.Song) {
+	if p.app.jamGuest() {
+		p.app.askAdd([]*library.Song{s}, false)
+		return
+	}
 	p.similarFor = s.ID // asked for here, so the queue's end does not ask again
 	p.play([]*library.Song{s}, 0)
 	p.app.mixOf("Songs", s.ID, radioSize, func(songs []*library.Song, err error) {
@@ -228,6 +251,12 @@ func (p *player) playWithSimilar(s *library.Song) {
 // playShuffled plays songs in a random order, whatever the setting.
 func (p *player) playShuffled(songs []*library.Song) {
 	if len(songs) == 0 {
+		return
+	}
+	if p.app.jamGuest() {
+		songs = slices.Clone(songs)
+		shuffle(songs)
+		p.app.askAdd(songs, false)
 		return
 	}
 	p.app.settings.Shuffle = true
@@ -277,6 +306,55 @@ func (p *player) playIndex(i int) {
 	p.reportStart()
 	p.armNext()
 	p.app.saveQueue()
+}
+
+// playFrom plays the song at i of the queue from at, here, as a guest of
+// a Jam plays the host's song.
+func (p *player) playFrom(i int, at time.Duration) {
+	if i < 0 || i >= len(p.queue) {
+		return
+	}
+	p.reportStop()
+	p.index = i
+	p.finished, p.paused, p.cold = false, false, false
+	p.starts++
+	p.track = p.trackOf(p.queue[i])
+	p.next, p.nextIndex = nil, -1
+	if p.engine == nil {
+		return
+	}
+	p.engine.Resume()
+	p.engine.Play(p.track, at)
+	p.reportStart()
+	p.armNext()
+}
+
+// jump plays the song at i of the queue, as a double click in the queue
+// does: in a Jam a guest is, the host is asked to.
+func (p *player) jump(i int) {
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpPlay, At: []int{i}})
+		return
+	}
+	p.failures = 0
+	p.playIndex(i)
+}
+
+// repeat is the repeat mode: the settings', or the Jam's host's.
+func (p *player) repeat() int {
+	if st := p.app.jam.state; p.app.jamGuest() && st != nil {
+		return st.Repeat
+	}
+	return p.app.settings.Repeat
+}
+
+// shuffled reports whether the queue is shuffled: as the settings say,
+// or the Jam's host's.
+func (p *player) shuffled() bool {
+	if st := p.app.jam.state; p.app.jamGuest() && st != nil {
+		return st.Shuffle
+	}
+	return p.app.settings.Shuffle
 }
 
 // addedRun returns where the songs added start and end in the queue.
@@ -338,11 +416,13 @@ func (p *player) followingIndex() int {
 	switch {
 	case len(p.queue) == 0 || p.index < 0:
 		return -1
-	case p.app.settings.Repeat == repeatOne:
+	case p.repeat() == repeatOne:
 		return p.index
 	case p.index+1 < len(p.queue):
 		return p.index + 1
-	case p.app.settings.Repeat == repeatAll:
+	case p.repeat() == repeatAll && !p.app.jamGuest():
+		// A guest has the songs around the host's: where its queue begins
+		// again is the host's to say.
 		return 0
 	}
 	return -1
@@ -433,6 +513,14 @@ func (p *player) toggle() {
 	if p.current() == nil {
 		return
 	}
+	if st := p.app.jam.state; p.app.jamGuest() && st != nil {
+		op := jam.OpResume
+		if st.Playing {
+			op = jam.OpPause
+		}
+		p.app.askJam(jam.Ask{Op: op})
+		return
+	}
 	if f := p.far; f != nil {
 		switch {
 		case f.dev.Playing == nil || f.queueKey == "":
@@ -492,6 +580,10 @@ func (p *player) skip() {
 	if p.index < 0 {
 		return
 	}
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpSkip})
+		return
+	}
 	if p.far != nil {
 		p.app.playstate("NextTrack", 0)
 		return
@@ -512,6 +604,10 @@ func (p *player) previous() {
 	if p.index < 0 {
 		return
 	}
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpPrevious})
+		return
+	}
 	if p.far != nil {
 		p.app.playstate("PreviousTrack", 0)
 		return
@@ -527,6 +623,14 @@ func (p *player) previous() {
 
 func (p *player) seek(to time.Duration) {
 	if p.current() == nil {
+		return
+	}
+	if p.app.jamGuest() {
+		// It moves here at once, as the host is asked to move there.
+		if p.app.askJam(jam.Ask{Op: jam.OpSeek, Position: to.Milliseconds()}) && p.engine != nil && p.track != nil && !p.cold {
+			p.engine.SeekTo(to + p.engine.Lag())
+			p.app.jam.settled = time.Now()
+		}
 		return
 	}
 	if f := p.far; f != nil {
@@ -562,6 +666,10 @@ func (p *player) seek(to time.Duration) {
 // songs played stay before the one playing, and the songs added stay
 // next.
 func (p *player) setShuffle(on bool) {
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpShuffle, On: on})
+		return
+	}
 	was := p.app.settings.Shuffle
 	p.app.settings.Shuffle = on
 	p.app.saveSettings()
@@ -600,11 +708,15 @@ func (p *player) setShuffle(on bool) {
 	p.app.saveQueue()
 }
 
-func (p *player) cycleRepeat() { p.setRepeat((p.app.settings.Repeat + 1) % 3) }
+func (p *player) cycleRepeat() { p.setRepeat((p.repeat() + 1) % 3) }
 
 // setRepeat repeats nothing, the queue or the song, here or on the device
 // that plays.
 func (p *player) setRepeat(mode int) {
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpRepeat, Mode: mode})
+		return
+	}
 	p.app.settings.Repeat = mode
 	p.app.saveSettings()
 	if f := p.far; f != nil {
@@ -621,6 +733,10 @@ func (p *player) setRepeat(mode int) {
 // playNext puts songs right after the one playing and the songs of Play
 // Next before them, ahead of those of Add to Queue.
 func (p *player) playNext(songs []*library.Song) {
+	if p.app.jamGuest() {
+		p.app.askAdd(songs, true)
+		return
+	}
 	if p.addsHere(songs, "PlayNext") {
 		lo, _ := p.addedRun()
 		at := lo + p.playNexts
@@ -633,6 +749,10 @@ func (p *player) playNext(songs []*library.Song) {
 // enqueue puts songs after the one playing and the songs added earlier,
 // before the rest of what plays, as Add to Queue does.
 func (p *player) enqueue(songs []*library.Song) {
+	if p.app.jamGuest() {
+		p.app.askAdd(songs, false)
+		return
+	}
 	if p.addsHere(songs, "PlayLast") {
 		_, hi := p.addedRun()
 		p.added += len(songs)
@@ -643,6 +763,10 @@ func (p *player) enqueue(songs []*library.Song) {
 // extend puts songs at the end of the queue, as more of what plays, as
 // the songs found like it are.
 func (p *player) extend(songs []*library.Song) {
+	if p.app.jamGuest() {
+		p.app.askAdd(songs, false)
+		return
+	}
 	if p.addsHere(songs, "PlayLast") {
 		if p.unshuffled != nil {
 			p.unshuffled = append(p.unshuffled, songs...)
@@ -697,6 +821,10 @@ func (p *player) remove(i int) {
 	if i < 0 || i >= len(p.queue) || i == p.index || p.farOwns() {
 		return
 	}
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpRemove, At: []int{i}})
+		return
+	}
 	if lo, hi := p.addedRun(); i >= lo && i < hi {
 		p.added--
 		if i < lo+p.playNexts {
@@ -748,6 +876,10 @@ func (p *player) kindAt(i int) int {
 // are added; songs dragged out from them are no longer.
 func (p *player) move(from []int, to int) {
 	if p.farOwns() {
+		return
+	}
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpMove, At: from, To: to})
 		return
 	}
 	cur := p.current()
@@ -847,6 +979,10 @@ func (p *player) clearUpcoming() {
 	if p.index < 0 || p.farOwns() {
 		return
 	}
+	if p.app.jamGuest() {
+		p.app.askJam(jam.Ask{Op: jam.OpClear})
+		return
+	}
 	_, hi := p.addedRun()
 	for _, s := range p.queue[hi:] {
 		p.unshuffled = dropOne(p.unshuffled, s)
@@ -879,8 +1015,8 @@ func (p *player) report(fn func(ctx context.Context, c *jellyfin.Client)) {
 
 func (p *player) reportStart() {
 	s := p.current()
-	if s == nil || p.far != nil {
-		return
+	if s == nil || p.far != nil || p.app.foreign(s) {
+		return // a song of another's server is not this server's to hear of
 	}
 	var b [8]byte
 	rand.Read(b[:])
