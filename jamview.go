@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -319,6 +320,7 @@ func (a *App) jamHostView(c *ui.Context) {
 			}
 		})
 	}
+	a.jamActivity(c)
 	a.tailSection(c)
 	a.card(c, func() {
 		a.setting(c, "Guests control playback", "They play, pause, skip and change the queue. Off, they only add songs.", func() {
@@ -372,6 +374,14 @@ func (a *App) jamGuestView(c *ui.Context) {
 	if j.away {
 		ui.Text(c, "The connection to "+j.hostName+" was lost. Reconnecting…").TextColor(p.warning)
 	}
+	if j.selfPaused {
+		ui.Row(c.Key("self-paused")).Gap(8).Padding(8, 10).Radius(p.radius).Background(p.accent.Alpha(0.1)).Children(func() {
+			ui.Text(c, "Paused here only. The Jam goes on for everyone else.").FontWeight(500).Grow(1).MinWidth(0).MaxLines(2)
+			if a.pillButton(c, "play", "Catch up", true).Clicked() {
+				a.jamCatchUp()
+			}
+		})
+	}
 	rule := "Only " + j.hostName + " controls playback. You can add songs to the queue."
 	if a.jamControls() {
 		rule = "Everyone can play, pause, skip and change the queue."
@@ -392,6 +402,7 @@ func (a *App) jamGuestView(c *ui.Context) {
 			a.memberRow(c, m.ID, name, note, false)
 		}
 	})
+	a.jamActivity(c)
 	ui.Text(c, "Your volume, equalizer and other sound settings stay your own. Your queue comes back when you leave.").FontSize(12).TextColor(p.faint).MaxLines(3)
 	ui.Row(c).Justify(ui.End).Children(func() {
 		if a.pillButton(c, "log-out", "Leave Jam", false).Clicked() {
@@ -448,4 +459,127 @@ func (a *App) jamOnlyView(c *ui.Context) {
 	a.jamDialog(c)
 	a.tailInviteDialog(c)
 	a.toastLayer(c, float32(playerH+14+jamStripH))
+}
+
+// jamEvents is the Jam's log as this app has it, the latest last, and
+// the time now by the host's clock.
+func (a *App) jamEvents() ([]jam.Event, time.Time) {
+	j := &a.jam
+	switch {
+	case j.host != nil:
+		return j.log, time.Now()
+	case j.guest != nil && j.state != nil:
+		return j.state.Log, j.guest.HostNow()
+	}
+	return nil, time.Now()
+}
+
+// jamActivity is what was done in the Jam, and by whom, the latest first:
+// a few, or all of them.
+func (a *App) jamActivity(c *ui.Context) {
+	events, now := a.jamEvents()
+	if len(events) == 0 {
+		return
+	}
+	j := &a.jam
+	p := a.pal
+	shown := 5
+	if j.logOpen {
+		shown = len(events)
+	}
+	ui.Row(c).Margin(4, 0, 0).Children(func() {
+		ui.Text(c, "ACTIVITY").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Grow(1)
+		if len(events) > 5 {
+			label := "Show all"
+			if j.logOpen {
+				label = "Show less"
+			}
+			if a.textButton(c, label).Clicked() {
+				j.logOpen = !j.logOpen
+			}
+		}
+	})
+	ui.Column(c).Gap(2).Children(func() {
+		for i := len(events) - 1; i >= 0 && i >= len(events)-shown; i-- {
+			a.jamEventRow(c, events[i], now)
+		}
+	})
+	// "now" becomes "1m".
+	c.After(20 * time.Second)
+}
+
+// jamEventRow is one thing done: its sign, who, what and to which song,
+// and how long ago.
+func (a *App) jamEventRow(c *ui.Context, ev jam.Event, now time.Time) {
+	p := a.pal
+	verb, song, more := jamEventWords(ev)
+	ui.Row(c.Key("event-"+strconv.FormatInt(ev.ID, 10))).Gap(10).Height(32).Padding(0, 10).Radius(p.radius).Children(func() {
+		ui.Box(c).Size(24, 24).Radius(12).Center().Background(p.surface).Shrink(0).Children(func() {
+			ui.Icon(c, icon(jamEventIcon(ev))).Size(13, 13).TextColor(p.muted)
+		})
+		ui.Row(c).Gap(4).Grow(1).MinWidth(0).Children(func() {
+			ui.Text(c, ev.Who).FontWeight(600).SingleLine().Shrink(0).MaxWidth(150)
+			ui.Text(c, verb).TextColor(p.muted).SingleLine().Shrink(0)
+			if song != "" {
+				ui.Text(c, song).FontWeight(500).SingleLine().MinWidth(0).Shrink(1)
+			}
+			if more != "" {
+				ui.Text(c, strings.TrimSpace(more)).TextColor(p.muted).SingleLine().Shrink(0)
+			}
+		})
+		ui.Text(c, agoShort(now.Sub(time.UnixMilli(ev.At)))).FontSize(12).TextColor(p.faint).Shrink(0).FontFeatures("tnum")
+	}).Tooltip(jamEventText(ev))
+}
+
+// jamEventIcon is the sign of an event.
+func jamEventIcon(ev jam.Event) string {
+	switch ev.Op {
+	case jam.OpPause:
+		return "pause"
+	case jam.OpResume:
+		return "play"
+	case jam.OpSkip:
+		return "skip-forward"
+	case jam.OpPrevious:
+		return "skip-back"
+	case jam.OpSeek:
+		return "clock"
+	case jam.OpPlay, jam.EvStart:
+		return "square-play"
+	case jam.OpAdd:
+		return "list-plus"
+	case jam.OpNext:
+		return "list-start"
+	case jam.OpRemove, jam.OpClear:
+		return "trash"
+	case jam.OpMove:
+		return "list-music"
+	case jam.OpShuffle:
+		return "shuffle"
+	case jam.OpRepeat:
+		if ev.Mode == repeatOne {
+			return "repeat-1"
+		}
+		return "repeat"
+	case jam.EvJoined, jam.EvBack:
+		return "users-round"
+	case jam.EvLeft:
+		return "log-out"
+	case jam.EvAway:
+		return "wifi-off"
+	}
+	return "music"
+}
+
+// agoShort says how long ago, shortly: "now", "4m", "2h".
+func agoShort(d time.Duration) string {
+	switch {
+	case d < 45*time.Second:
+		return "now"
+	case d < time.Hour:
+		return strconv.Itoa(int(d.Round(time.Minute)/time.Minute)) + "m"
+	case d < 24*time.Hour:
+		return strconv.Itoa(int(d/time.Hour)) + "h"
+	}
+	return strconv.Itoa(int(d/(24*time.Hour))) + "d"
 }

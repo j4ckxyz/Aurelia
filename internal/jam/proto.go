@@ -180,7 +180,36 @@ type State struct {
 	// Control lets guests play, pause, skip, seek and change the queue;
 	// without it they only add songs.
 	Control bool `json:"control,omitempty"`
+	// Log is what was done in the Jam, and by whom, the latest last.
+	Log []Event `json:"log,omitempty"`
 }
+
+// Event is something done in the Jam: by whom, when by the host's clock
+// (milliseconds since 1970), and what, as an Op of Ask's or one of the
+// Ev constants, of the song named.
+type Event struct {
+	ID   int64  `json:"id"` // counts up, in the Jam
+	At   int64  `json:"at"`
+	Who  string `json:"who"`
+	Host bool   `json:"host,omitempty"` // done by the host
+	Op   string `json:"op"`
+	Song string `json:"song,omitempty"`
+	// N counts the songs of an add, Position is where a seek went, in
+	// milliseconds, and On and Mode are shuffle's and repeat's.
+	N        int   `json:"n,omitempty"`
+	Position int64 `json:"pos,omitempty"`
+	On       bool  `json:"on,omitempty"`
+	Mode     int   `json:"mode,omitempty"`
+}
+
+// The ops of Event that are not of Ask.
+const (
+	EvJoined = "joined"
+	EvLeft   = "left"
+	EvAway   = "away" // lost, as a computer gone to sleep
+	EvBack   = "back"
+	EvStart  = "start" // played something new: Song, of N
+)
 
 // Ask is what a guest asks of the host. Places are in the queue of the
 // state the guest has, and the keys of the songs there say which songs

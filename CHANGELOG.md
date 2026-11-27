@@ -17,6 +17,16 @@
 - The Jam's dialog scrolls under its title in a window too low for all
   of it, as with many people or devices, instead of running out of the
   window.
+- Jams: the Jam's dialog shows who did what, the latest first: who
+  paused or played on, skipped, moved in a song, added, removed or moved
+  songs, and who joined, left or lost the connection. What someone else
+  does to what plays shows as a notification too.
+- Jams: a guest's pause from outside Aurelia (the keyboard's media keys,
+  headphones taken off, the system's media controls, the computer going
+  to sleep) pauses only that guest, not the Jam; play or Catch up takes
+  it back to where the host is, and a computer paused as it went to
+  sleep catches up as it wakes. On Linux, Aurelia keeps the computer
+  from suspending on its own while music plays.
 
 ## 0.8.1
 

@@ -242,13 +242,9 @@ func pressed(a *App, button int32) {
 		p := a.player
 		switch button {
 		case buttonPlay:
-			if !p.playing() {
-				p.toggle()
-			}
+			p.playHere()
 		case buttonPause, buttonStop:
-			if p.playing() {
-				p.toggle()
-			}
+			p.pauseHere()
 		case buttonNext:
 			p.skip()
 		case buttonPrevious:

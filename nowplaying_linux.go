@@ -21,6 +21,9 @@ type nowPlaying struct {
 	props *prop.Properties
 	ok    bool
 	last  playing
+	// inhibit is the portal's request that keeps the computer awake while
+	// music plays: "" for none, "pending" while it is asked for.
+	inhibit dbus.ObjectPath
 }
 
 const (
@@ -54,24 +57,19 @@ func (m mprisControls) do(fn func(p *player)) *dbus.Error {
 
 func (m mprisControls) Next() *dbus.Error     { return m.do(func(p *player) { p.skip() }) }
 func (m mprisControls) Previous() *dbus.Error { return m.do(func(p *player) { p.previous() }) }
+
+// The desktop's play and pause, its media keys among them, are the
+// system's: a Jam's guest pauses alone (toggleHere).
 func (m mprisControls) PlayPause() *dbus.Error {
-	return m.do(func(p *player) { p.toggle() })
+	return m.do(func(p *player) { p.toggleHere() })
 }
 
 func (m mprisControls) Play() *dbus.Error {
-	return m.do(func(p *player) {
-		if !p.playing() {
-			p.toggle()
-		}
-	})
+	return m.do(func(p *player) { p.playHere() })
 }
 
 func (m mprisControls) Pause() *dbus.Error {
-	return m.do(func(p *player) {
-		if p.playing() {
-			p.toggle()
-		}
-	})
+	return m.do(func(p *player) { p.pauseHere() })
 }
 
 func (m mprisControls) Stop() *dbus.Error { return m.Pause() }
@@ -199,6 +197,7 @@ func (n *nowPlaying) init(a *App) {
 	}
 	conn.Export(introspect.NewIntrospectable(node), mprisPath, "org.freedesktop.DBus.Introspectable")
 	n.ok = true
+	go watchSleep(a)
 }
 
 func loopStatus(repeat int) string {
@@ -233,6 +232,7 @@ func (n *nowPlaying) set(p playing) {
 	case p.paused:
 		status = "Paused"
 	}
+	n.keepAwake(status == "Playing")
 	meta := map[string]dbus.Variant{"mpris:trackid": dbus.MakeVariant(trackPath(p.id))}
 	if p.title != "" {
 		meta["xesam:title"] = dbus.MakeVariant(p.title)

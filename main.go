@@ -217,7 +217,7 @@ func (a *App) mediaKeys() {
 		return // the system sends them to the app playing, with what it shows of it
 	}
 	for key, fn := range map[string]func(){
-		"MediaPlayPause":     func() { a.player.toggle() },
+		"MediaPlayPause":     func() { a.player.toggleHere() },
 		"MediaNextTrack":     func() { a.player.skip() },
 		"MediaPreviousTrack": func() { a.player.previous() },
 	} {

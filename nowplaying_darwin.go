@@ -82,17 +82,11 @@ func (n *nowPlaying) init(a *App) {
 	do := func(fn func()) func(objc.ID) {
 		return func(objc.ID) { a.update(fn) }
 	}
-	on("togglePlayPauseCommand", do(func() { a.player.toggle() }))
-	on("playCommand", do(func() {
-		if !a.player.playing() {
-			a.player.toggle()
-		}
-	}))
-	on("pauseCommand", do(func() {
-		if a.player.playing() {
-			a.player.toggle()
-		}
-	}))
+	// The system's, its media keys and headphones taken off among them:
+	// a Jam's guest pauses alone (toggleHere).
+	on("togglePlayPauseCommand", do(func() { a.player.toggleHere() }))
+	on("playCommand", do(func() { a.player.playHere() }))
+	on("pauseCommand", do(func() { a.player.pauseHere() }))
 	on("nextTrackCommand", do(func() { a.player.skip() }))
 	on("previousTrackCommand", do(func() { a.player.previous() }))
 	on("changePlaybackPositionCommand", func(event objc.ID) {
