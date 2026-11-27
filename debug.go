@@ -257,6 +257,14 @@ func (a *App) debug(dir, line string) {
 					out += fmt.Sprintf("member %q away=%v host=%v peer=%+v\n", m.Name, m.Away, m.Host, m.Peer)
 				}
 				out += fmt.Sprintf("now=%d position=%dms paused=%v buffering=%v index=%d queue=%d\n", time.Now().UnixMilli(), st.Position.Milliseconds(), st.Paused, st.Buffering, a.player.index, len(a.player.queue))
+				if j.guest != nil && j.state != nil {
+					// Where the host is, by its clock: what the guest follows.
+					hp := time.Duration(j.state.Position) * time.Millisecond
+					if j.state.Playing {
+						hp += j.guest.HostNow().Sub(time.UnixMilli(j.state.At))
+					}
+					out += fmt.Sprintf("host index=%d position=%dms playing=%v off=%dms\n", j.state.Index, hp.Milliseconds(), j.state.Playing, (st.Position - hp).Milliseconds())
+				}
 				for i, s := range a.player.queue {
 					mark := " "
 					if i == a.player.index {

@@ -85,6 +85,10 @@ type tailInvite struct {
 	addr string // where the Jam is
 	code string
 	at   time.Time
+	// oneWay is set for an invite from a device of someone this computer
+	// is shared with: Tailscale lets it reach this one, not this one it,
+	// so its Jam cannot be joined. It may join one held here.
+	oneWay bool
 }
 
 // What became of an invite sent.
@@ -223,7 +227,8 @@ func (a *App) tailDoor() {
 			return jam.About{}
 		},
 		OnInvite: func(from jam.Peer, addr string, inv jam.Invitation) {
-			a.update(func() { a.tailInvited(from, addr, inv) })
+			oneWay := a.tailOneWay(from.Node)
+			a.update(func() { a.tailInvited(from, addr, inv, oneWay) })
 		},
 	}
 	if err := jam.OpenDoor(d, addrs, t.port); err != nil {
@@ -496,7 +501,7 @@ func (a *App) tailCopyInvite() {
 }
 
 // tailInvited is an invite come to the door.
-func (a *App) tailInvited(from jam.Peer, addr string, inv jam.Invitation) {
+func (a *App) tailInvited(from jam.Peer, addr string, inv jam.Invitation, oneWay bool) {
 	t := &a.tail
 	t.invites = slices.DeleteFunc(t.invites, func(i tailInvite) bool {
 		return i.from.Node == from.Node || time.Since(i.at) > 10*time.Minute
@@ -504,7 +509,7 @@ func (a *App) tailInvited(from jam.Peer, addr string, inv jam.Invitation) {
 	if len(t.invites) >= 3 {
 		return
 	}
-	t.invites = append(t.invites, tailInvite{id: strconv.FormatInt(time.Now().UnixNano(), 36), from: from, addr: addr, code: jam.NormalizeCode(inv.Code), at: time.Now()})
+	t.invites = append(t.invites, tailInvite{id: strconv.FormatInt(time.Now().UnixNano(), 36), from: from, addr: addr, code: jam.NormalizeCode(inv.Code), at: time.Now(), oneWay: oneWay})
 	if a.win != nil {
 		a.win.Invalidate()
 	}
@@ -518,6 +523,23 @@ func (a *App) tailInvited(from jam.Peer, addr string, inv jam.Invitation) {
 			log.Print("the notification: ", err)
 		}
 	}
+}
+
+// tailOneWay reports whether a device of the tailnet is of someone this
+// computer is shared with, which Tailscale lets reach this computer but
+// not this computer it. It asks Tailscale, off the main goroutine.
+func (a *App) tailOneWay(node string) bool {
+	api := a.tail.api
+	if api == nil || node == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	st, err := api.Status(ctx, true)
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(tailnet.Read(st).Devices, func(d tailnet.Device) bool { return d.Sharee && d.ID == node })
 }
 
 // inviter is how an invite names who sent it: Tailscale's name of them.
@@ -555,6 +577,18 @@ func (a *App) answerInvite(id string, yes bool) {
 		a.saveSettings()
 		a.tailAbout()
 	}
+	if inv.oneWay {
+		// Their Jam cannot be reached from here: one held here can be
+		// from there, which their list of the tailnet shows to join.
+		if a.jam.guest != nil {
+			a.stopJam()
+		}
+		if a.jam.host == nil {
+			a.startJam()
+		}
+		a.openJam()
+		return
+	}
 	a.stopJam()
 	a.jam.open = true
 	a.jam.joinErr = ""
@@ -573,4 +607,11 @@ func (a *App) tailJoin(d tailDevice) {
 		addr = net.JoinHostPort(host, strconv.Itoa(port))
 	}
 	a.joinJam(addr, "")
+}
+
+// tailAddr reports whether an address, as "100.101.102.103:47475", is on
+// a tailnet.
+func tailAddr(addr string) bool {
+	ap, err := netip.ParseAddrPort(addr)
+	return err == nil && tailnet.IsTailscaleIP(ap.Addr())
 }

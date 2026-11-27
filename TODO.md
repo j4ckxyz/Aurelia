@@ -123,13 +123,24 @@ real Tailscale (1.104.5): what was seen there is ticked.
       Tailscale address at 47475.
 - [x] A device of the same Tailscale user joins without the code and
       without asking, by WhoIs, and plays the host's songs through it.
-- [ ] Two real devices: the list, Invite to a device whose Jams are off
-      and "Turn on and join", Join, Copy invite link for a device with
-      Aurelia closed, someone else's device asking as who they are; and a
-      shared-with person joining by the link. Only the tests do these yet,
-      with apps on one computer and a fake Tailscale.
-- [ ] macOS: the App Store app and the standalone app (both found by the
-      library's own way, not tried), and whether its firewall asks.
+- [x] Two real devices, 0.8.0 (2026-11-27): a MacBook hosting, its
+      door answering over Tailscale (through a DERP relay); this Linux
+      computer, the same user's, joining without the code; a shared-with
+      person on Linux in the Jam too.
+- [x] In step over a slow link: guests were a steady 0.5-1.1 s behind
+      (5 s for the shared-with person), as a song moved to was heard late
+      by the time it took to load, and only 2.5 s was corrected. Guests
+      now learn that time and move back in step past 300 ms: within
+      ±30 ms over the relay, and through a relay of 900 ms each way.
+- [ ] Two real devices still: Invite to a device whose Jams are off and
+      "Turn on and join", Join from the list, Copy invite link for a
+      device with Aurelia closed, someone else's device asking as who
+      they are. Only the tests do these yet.
+- [ ] An invite from a shared-with person's device, which can't be
+      reached from here, offers to host instead of failing to join: only
+      the tests do it yet.
+- [ ] macOS: one of the two Tailscale apps works (the MacBook's; which,
+      not known); the other, and whether its firewall asks.
 - [ ] Windows: the named pipe, and the firewall's question as the
       listener opens.
 

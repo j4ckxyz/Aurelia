@@ -1,5 +1,19 @@
 # Changes
 
+## 0.8.1
+
+- Jams: guests stay in step with the host over slow links, as over
+  Tailscale's relays. They were heard up to seconds behind, as a song
+  started late by the time it took to come from the host; now that time
+  is learned and allowed for, and guests are moved back in step when
+  more than 0.3 s off, not 2.5 s.
+- Jams over Tailscale: an invite from someone your computer is shared
+  with, which Tailscale lets reach your computer but not the other way,
+  offers to host a Jam they can join, instead of failing to join theirs.
+  Joining a Jam that can't be reached over Tailscale says why.
+- Devices of people your computer is shared with no longer show as
+  "device-of-shared-to-user".
+
 ## 0.8.0
 
 - Jams, in beta (Settings ▸ Beta): listening together with people on

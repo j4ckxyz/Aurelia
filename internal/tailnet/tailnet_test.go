@@ -58,7 +58,7 @@ func TestRead(t *testing.T) {
 		{"n2", "ThinkPad", "Sam (sam@github)"},
 		{"n3", "nas", "tag:server"},
 		{"n5", "iphone-16", "Yours"},
-		{"n4", "device-of-shared-to-user", "Robin (robin@example.com)"},
+		{"n4", "", "Robin (robin@example.com)"}, // Tailscale tells no name of it
 	}
 	for _, c := range cases {
 		d := by[c.id]

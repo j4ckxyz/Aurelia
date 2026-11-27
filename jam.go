@@ -71,11 +71,16 @@ type jamState struct {
 
 	// The guest's: the session its callbacks are of, the last state, and
 	// the queue it had before, which comes back as it leaves.
-	sess     *guestSession
-	state    *jam.State
-	away     bool
-	saved    *savedPlayer
-	settled  time.Time // the song was started or moved: let be a while
+	sess    *guestSession
+	state   *jam.State
+	away    bool
+	saved   *savedPlayer
+	settled time.Time // the song was started or moved: let be a while
+	// catchUp is how late a song started or moved here is heard: the
+	// time to have it from where it comes, the host over a slow link
+	// most of all. It is learned from how far behind each lands, and
+	// started that much further on.
+	catchUp  time.Duration
 	hostName string
 
 	// The dialog.
@@ -220,6 +225,7 @@ func (a *App) resetJam() {
 	j.images = map[string]string{}
 	j.by, j.wire = map[*library.Song]string{}, map[*library.Song]*jam.Song{}
 	j.members, j.requests, j.state, j.away, j.pubKey = nil, nil, nil, false, ""
+	j.catchUp = 0
 	j.share = newJamShare(a.clientNow(), a.serverID())
 }
 
@@ -444,6 +450,8 @@ func (a *App) joinJam(addr, code string) {
 					j.joinErr = denied.Why
 				case addr == "":
 					j.joinErr = err.Error()
+				case tailAddr(found):
+					j.joinErr = "Could not reach the Jam at " + found + " over Tailscale. If one of your computers is shared with the other on Tailscale, it connects only one way: the one that can be reached hosts. Otherwise, is Aurelia open there?"
 				default:
 					j.joinErr = "Could not reach the Jam at " + found + ". Is it on this network, and does its firewall let Aurelia in?"
 				}
@@ -572,7 +580,9 @@ func (a *App) jamPublish() {
 	if j.pubPlay {
 		expected += time.Since(j.pubAt)
 	}
-	moved := st.Position-expected > 1500*time.Millisecond || expected-st.Position > 1500*time.Millisecond
+	// A moment lost loading, or a jump, is told at once: guests follow
+	// it within a fraction of a second.
+	moved := st.Position-expected > jamDrift || expected-st.Position > jamDrift
 	if key.String() == j.pubKey && !moved && time.Since(j.pubAt) < 10*time.Second {
 		return
 	}
@@ -911,9 +921,9 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 	pos = max(pos, 0)
 	// What this engine plays from a place is heard a moment later: it
 	// starts that much ahead, to be heard where the host is.
-	lead := time.Duration(0)
+	lead := j.catchUp
 	if p.engine != nil {
-		lead = p.engine.Lag()
+		lead += p.engine.Lag()
 	}
 	oldKey := ""
 	if old != nil && p.track != nil && !p.cold {
@@ -953,7 +963,8 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 		return
 	}
 	p.index = st.Index
-	off := local.Position - pos
+	drift := local.Position - pos // ahead of the host, or behind it
+	off := drift
 	if off < 0 {
 		off = -off
 	}
@@ -983,13 +994,25 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 			}
 		}
 		p.reportProgress(true)
-	case off > 2500*time.Millisecond && (fresh || time.Since(j.settled) > 5*time.Second) && !local.Buffering && p.engine != nil:
-		// Out of step: back in.
+	case off > jamDrift && (time.Since(j.settled) > 3*time.Second || fresh && off > 2*time.Second) && !local.Buffering && p.engine != nil:
+		// Out of step: back in. Soon after the last time, how far off it
+		// is says how late it was heard, which the next time allows for;
+		// not when the host has jumped.
+		jumped := fresh && off > 2*time.Second
+		if !jumped && time.Since(j.settled) < 20*time.Second && off < 8*time.Second {
+			j.catchUp = min(max(j.catchUp-drift, 0), 8*time.Second)
+			lead = j.catchUp + p.engine.Lag()
+		}
 		p.engine.SeekTo(pos + lead)
 		j.settled = time.Now()
 	}
 	a.jamArm()
 }
+
+// jamDrift is how far a guest may be from the host before it is moved
+// back in step: less than is heard as an echo between two rooms, more
+// than the jitter of where each says it is.
+const jamDrift = 300 * time.Millisecond
 
 // jamArm has the engine ready the song after, which the queue's change
 // may have moved.

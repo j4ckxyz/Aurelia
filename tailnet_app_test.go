@@ -354,6 +354,35 @@ func TestTailnetInviteWithJamsOff(t *testing.T) {
 	wantTexts(t, tt, "Sam (sam@github) · In your Jam")
 }
 
+// An invite from a device of someone Bo's computer is shared with: Bo
+// cannot reach it, so cannot join its Jam. Bo is offered to host one,
+// which they can reach, instead.
+func TestTailnetInviteOneWay(t *testing.T) {
+	host, guest, _, gf := tailPair(t)
+	apps := []*App{host, guest}
+	gf.mu.Lock()
+	for _, p := range gf.st.Peer {
+		p.ShareeNode = true // Ada's Studio, to Bo's computer
+	}
+	gf.mu.Unlock()
+	readTail(t, apps, host)
+	host.tailInvite(host.tailDevices()[0].Device)
+	both(t, apps, "the invite", func() bool { return len(guest.tail.invites) == 1 })
+	if !guest.tail.invites[0].oneWay {
+		t.Fatal("the invite is not known for one way")
+	}
+	gt := ui.NewTester(guest.view, 1240, 900)
+	gt.Frame()
+	wantTexts(t, gt, "Ada invited you to a Jam (beta)", "yours can't reach theirs", "Host a Jam")
+	if gt.HasText("Turn on and join") {
+		t.Error("offered to join a Jam that cannot be reached")
+	}
+	click(t, gt, "Host a Jam")
+	if guest.jam.host == nil || guest.jam.guest != nil || !guest.jam.open || !guest.settings.Jam {
+		t.Errorf("Bo hosts no Jam: host=%v guest=%v open=%v", guest.jam.host != nil, guest.jam.guest != nil, guest.jam.open)
+	}
+}
+
 // "Not now" lets the invite be, and the beta stays off.
 func TestTailnetInviteNotNow(t *testing.T) {
 	host, guest, _, _ := tailPair(t)

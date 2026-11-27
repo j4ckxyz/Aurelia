@@ -246,8 +246,13 @@ func device(st *ipnstate.Status, p *ipnstate.PeerStatus, me tailcfg.UserID) Devi
 }
 
 // name is what a device is called: the name its computer gives itself,
-// but for the "localhost" of phones, whose MagicDNS name says more.
+// but for the "localhost" of phones, whose MagicDNS name says more. A
+// device of someone this computer is shared with has no name Tailscale
+// tells: it is "".
 func name(host, dns string) string {
+	if host == shareeName {
+		return ""
+	}
 	if host != "" && host != "localhost" {
 		return host
 	}
@@ -256,6 +261,10 @@ func name(host, dns string) string {
 	}
 	return cmp.Or(host, "A device")
 }
+
+// shareeName is the name Tailscale gives, in place of its own, a device of
+// someone this computer is shared with.
+const shareeName = "device-of-shared-to-user"
 
 // Who is whom a WhoIs found: the device and its owner. self is the user
 // signed in here, whose devices are Mine.
