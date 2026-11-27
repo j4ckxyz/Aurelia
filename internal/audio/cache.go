@@ -289,6 +289,26 @@ func (e *entry) release() {
 	e.drop()
 }
 
+// dropIdle lets go at once of the downloads nobody reads, which go on
+// a while otherwise: as the cache is done with.
+func (c *Cache) dropIdle() {
+	for {
+		c.mu.Lock()
+		var idle *entry
+		for _, e := range c.entries {
+			if e.refs == 0 {
+				idle = e
+				break
+			}
+		}
+		if idle == nil {
+			c.mu.Unlock()
+			return
+		}
+		idle.drop()
+	}
+}
+
 // keepUnread is how long a download goes on unread.
 var keepUnread = 20 * time.Second
 

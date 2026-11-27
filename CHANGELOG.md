@@ -14,6 +14,9 @@
   answers, the quickest of a minute of them.
 - A song that was downloading, played again from another place or
   skipped to, goes on downloading where it was instead of starting over.
+- The Jam's dialog scrolls under its title in a window too low for all
+  of it, as with many people or devices, instead of running out of the
+  window.
 
 ## 0.8.1
 

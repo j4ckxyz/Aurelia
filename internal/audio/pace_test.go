@@ -27,11 +27,14 @@ func TestPacedDownload(t *testing.T) {
 			}
 		}
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close) // after the cache lets go of its downloads
 	c, err := NewCache(t.TempDir(), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Nothing of the cache is open as its directory goes, as Windows
+	// removes no open file.
+	t.Cleanup(c.dropIdle)
 	open := func(key string, ahead time.Duration) *File {
 		f, err := c.OpenPaced(key, func(ctx context.Context) (*http.Request, error) {
 			return http.NewRequestWithContext(ctx, "GET", srv.URL, nil)
@@ -107,12 +110,13 @@ func TestReopenedDownloadGoesOn(t *testing.T) {
 		<-release
 		w.Write(make([]byte, 65536))
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close) // after the cache lets go of its downloads
 	defer close(release)
 	c, err := NewCache(t.TempDir(), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(c.dropIdle)
 	open := func() *File {
 		f, err := c.Open("song", func(ctx context.Context) (*http.Request, error) {
 			return http.NewRequestWithContext(ctx, "GET", srv.URL, nil)

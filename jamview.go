@@ -133,7 +133,9 @@ func (a *App) jamDialog(c *ui.Context) {
 	}
 	open := true
 	ui.Modal(c, &open, func() {
-		ui.Column(c).Gap(14).Padding(22).Width(440).Children(func() {
+		// The title stays; what is under it scrolls, in a window too low
+		// for all of it, as with many people or devices.
+		ui.Column(c).Width(440).MinHeight(0).Shrink(1).Children(func() {
 			title := "Jam"
 			switch {
 			case j.host != nil:
@@ -141,7 +143,7 @@ func (a *App) jamDialog(c *ui.Context) {
 			case j.guest != nil:
 				title = j.hostName + "'s Jam"
 			}
-			ui.Row(c).Gap(10).Children(func() {
+			ui.Row(c).Gap(10).Padding(22, 22, 0, 22).Shrink(0).Children(func() {
 				ui.Text(c, title).FontSize(18).FontWeight(700).SingleLine().MinWidth(0).Shrink(1)
 				a.betaTag(c)
 				ui.Spacer(c)
@@ -149,15 +151,19 @@ func (a *App) jamDialog(c *ui.Context) {
 					open = false
 				}
 			})
-			a.tailInviteBanner(c)
-			switch {
-			case j.host != nil:
-				a.jamHostView(c)
-			case j.guest != nil:
-				a.jamGuestView(c)
-			default:
-				a.jamStartView(c)
-			}
+			ui.Scroll(c.Key("jam-dialog")).MinHeight(0).Shrink(1).Children(func() {
+				ui.Column(c).Gap(14).Padding(14, 22, 22, 22).Children(func() {
+					a.tailInviteBanner(c)
+					switch {
+					case j.host != nil:
+						a.jamHostView(c)
+					case j.guest != nil:
+						a.jamGuestView(c)
+					default:
+						a.jamStartView(c)
+					}
+				})
+			})
 		})
 	})
 	if !open {
