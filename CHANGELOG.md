@@ -1,5 +1,28 @@
 # Changes
 
+## Unreleased
+
+- Jams, in beta (Settings ▸ Beta): listening together with people on
+  the same network, as Spotify's Jams. One person hosts and the others
+  join with a code, or find the Jam nearby and ask to come in; everyone
+  hears the same queue on their own computer, in step with the host, and
+  with their own volume, equalizer, spatial audio, crossfade and vinyl.
+  Everyone can add songs; the host chooses whether guests also play,
+  pause, skip and reorder. Songs a guest's server lacks play from the
+  host, who gets those of a guest's server from that guest, so friends
+  on another server, or with none ("Join a friend's Jam" on the sign-in
+  page), hear everything. A dropped connection comes back by itself, and
+  leaving brings your own queue back.
+- Jams over Tailscale: with Tailscale running, the Jam's dialog lists the
+  devices of your tailnet that have Aurelia open, with whose each is,
+  to invite (even with their Jams off: "Turn on and join") or join. Who
+  sent an invite or asks to join is what Tailscale says, not what they
+  claim; your own devices join without the code. Aurelia listens for
+  this on its Tailscale addresses only, which Settings ▸ Beta can turn
+  off.
+- A proxy in the settings no longer carries traffic to Tailscale
+  addresses (100.64.0.0/10, fd7a:115c:a1e0::/48) or MagicDNS names.
+
 ## 0.7.0
 
 - Vinyl: music as if played from its album's record, on a turntable

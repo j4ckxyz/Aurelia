@@ -5,7 +5,10 @@
   "copyright": "Copyright (c) 2026 j4ckxyz. MIT License.",
   "out": "build",
   "macos": {
-    "minimumSystemVersion": "13.0"
+    "minimumSystemVersion": "13.0",
+    "infoPlist": {
+      "NSLocalNetworkUsageDescription": "Aurelia finds and joins Jams, listening together with people on this network."
+    }
   },
   "linux": {
     "command": "aurelia",

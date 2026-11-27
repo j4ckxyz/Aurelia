@@ -184,11 +184,11 @@ func (a *App) trayArt(s *library.Song) ([]byte, string, bool) {
 		}
 		return d.art, from, d.art != nil
 	}
-	c := a.clientNow()
-	if c == nil || s.ImageTag == "" {
+	u := a.imageURL(s.ImageItem, s.ImageTag, coverPixels)
+	if u == "" {
 		return nil, "", false
 	}
-	path := a.images.file(imageKey(s.ImageItem, s.ImageTag, coverPixels), c.ImageURL(s.ImageItem, "Primary", s.ImageTag, coverPixels))
+	path := a.images.file(imageKey(s.ImageItem, s.ImageTag, coverPixels), u)
 	if path == "" {
 		return nil, "", false // being fetched: the system is told again once it is there
 	}

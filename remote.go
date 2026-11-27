@@ -369,6 +369,11 @@ var repeatModes = []string{repeatOff: "RepeatNone", repeatAll: "RepeatAll", repe
 
 // deviceMenu chooses where the music plays, in the player bar's "…".
 func (a *App) deviceMenu(m *ui.Menu) {
+	if a.jam.in() {
+		m.Item("This Computer").Checked(true)
+		m.Item("Another device can play once the Jam is over").Disabled(true)
+		return
+	}
 	f := a.player.far
 	a.refreshDevices()
 	if m.Item("This Computer").Checked(f == nil).Chosen() && f != nil {

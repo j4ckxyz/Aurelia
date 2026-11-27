@@ -416,11 +416,11 @@ func (a *App) stageCover(c *ui.Context, song *library.Song) {
 		st.cover, st.turner, st.backdrop = key, newTurner(pic, 600), backdrop(pic)
 		return
 	}
-	cl := a.clientNow()
-	if cl == nil {
+	u := a.imageURL(song.ImageItem, song.ImageTag, px)
+	if u == "" {
 		return
 	}
-	path := a.images.file(key, cl.ImageURL(song.ImageItem, "Primary", song.ImageTag, px))
+	path := a.images.file(key, u)
 	if path == "" {
 		c.After(250 * time.Millisecond) // it is being fetched
 		return

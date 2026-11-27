@@ -367,11 +367,18 @@ func (a *App) moveInPlaylist(pl *library.Playlist, s *library.Song, to int) {
 
 // saveQueue asks for a name and keeps the queue as a playlist.
 func (a *App) saveQueueAsPlaylist() {
-	songs := a.player.queue
+	// The songs of the server's own: those a Jam brought from another's
+	// are not its to keep.
+	var songs []*library.Song
+	for _, s := range a.player.queue {
+		if !a.foreign(s) {
+			songs = append(songs, s)
+		}
+	}
 	if len(songs) == 0 {
 		return
 	}
-	a.newPlaylist(append([]*library.Song(nil), songs...), "Queue of "+time.Now().Format("2 January"))
+	a.newPlaylist(songs, "Queue of "+time.Now().Format("2 January"))
 }
 
 // menuPlaylists is how many playlists the Add to Playlist submenu lists:

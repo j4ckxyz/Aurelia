@@ -137,6 +137,10 @@ type App struct {
 	output outputState
 	// remote is the other devices of the user, to play on.
 	remote remote
+	// jam is listening together with others on the network (jam.go).
+	jam jamState
+	// tail is Tailscale, for Jams across a tailnet (tailnet.go).
+	tail tailState
 	// cursor is the marker the keys move over a page's items.
 	cursor cursor
 	// chosen is the songs chosen in the list of a page.
@@ -183,6 +187,8 @@ func newApp(d dirs, silent bool) *App {
 	if s := a.settings.Session; s != nil {
 		a.client = jellyfin.New(*s)
 	}
+	a.resetJam()
+	a.initTail()
 	return a
 }
 
@@ -342,6 +348,7 @@ func (a *App) signIn() {
 // signOut forgets the session, here and on the server.
 func (a *App) signOut() {
 	c := a.clientNow()
+	a.stopJam()
 	a.player.stop()
 	a.setClient(nil)
 	a.settings.Session = nil
@@ -507,8 +514,8 @@ func (a *App) pinArt(id, tag string) {
 // saveQueue keeps the queue for the next run.
 func (a *App) saveQueue() {
 	sess := a.settings.Session
-	if sess == nil || a.player.far != nil {
-		return // another device's queue is its own
+	if sess == nil || a.player.far != nil || a.jam.guest != nil {
+		return // another device's queue is its own, and a Jam's the host's
 	}
 	p := a.player
 	q := savedQueue{Server: sess.ServerID + "/" + sess.UserID, Position: p.state().Position.Seconds()}
@@ -673,8 +680,8 @@ func (a *App) tellSystem() {
 	key := "nothing"
 	if s != nil {
 		now = playing{title: s.Name, artist: s.Artist, album: s.Album, duration: st.Duration, position: st.Position, paused: st.Paused, id: s.ID}
-		if c := a.client; c != nil && s.ImageItem != "" && s.ImageTag != "" {
-			now.artURL = c.ImageURL(s.ImageItem, "Primary", s.ImageTag, coverPixels)
+		if u := a.imageURL(s.ImageItem, s.ImageTag, coverPixels); u != "" {
+			now.artURL = u
 			now.art = a.images.file(imageKey(s.ImageItem, s.ImageTag, coverPixels), now.artURL)
 		}
 		key = fmt.Sprint(s.ID, st.Paused, now.art != "", a.settings.Shuffle, a.settings.Repeat, int(a.settings.Volume*100))

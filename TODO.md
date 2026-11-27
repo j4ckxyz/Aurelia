@@ -61,6 +61,78 @@ so each stays here until it is.
 - [ ] The playing row's pause, Favorites' Play and order, the heart's
       toast, Remove all asking, Show all keeping the order, places kept.
 
+### Jams, in beta (asked 2026-11-23)
+
+Listening together on one network, as Spotify's Jams: the host's queue
+is everyone's, each plays it on their own computer with their own sound
+settings, and songs a guest's server lacks play from whoever has them,
+as a DS game is played from one copy. Built, with tests
+(`internal/jam`, `jam_app_test.go`); run in the app on Linux, three
+copies at once under Xvfb against two stand-in Jellyfin servers, with the
+real sound engine on PipeWire's null sink. What was seen there is ticked.
+
+- [x] Settings ▸ Beta turns Jams on; the player's bar then has a Jam
+      button, and its "…" a Jam item.
+- [x] Start a Jam: a code, the people in it, guests' control and being
+      shown nearby, End Jam; the strip above the player's bar.
+- [x] Join with the code alone (the host found by broadcast), with an
+      invite (its address), or from the Jams found nearby, which asks the
+      host: "Let in" from its toast or its dialog.
+- [x] Everyone plays the host's song, within 20 ms of it once the
+      device's buffer is allowed for, and stays there across the end of a
+      song, with crossfade and vinyl on for one guest and not the others.
+- [x] A guest's add, pause and seek reach everyone; without control a
+      guest's skip and removal are refused, and the queue says so.
+- [x] Songs of another server: the host's played by a guest of another
+      server through the host; a guest's played by the host and a third
+      guest through the host, from the guest, which its server sent once;
+      covers the same way.
+- [x] Someone not signed in joins from the sign-in page, and hears and
+      sees everything through the host.
+- [x] A host gone for 30 s (its process stopped): the guests play on,
+      say "reconnecting…", and come back in by themselves.
+- [x] Leaving brings the guest's own queue back; ending tells the guests,
+      and takes the guests' songs out of the host's queue.
+- [ ] Seen working on macOS (the Local Network permission, asked once)
+      and on Windows (its firewall's question), and between two real
+      computers on Wi-Fi.
+- [ ] Lyrics of a song of another server, through the Jam: built and
+      tested (`TestJamAcrossServers`), not yet seen in the app with a
+      server that has lyrics.
+
+### Jams over Tailscale, in beta (asked 2026-11-23)
+
+The Jam's dialog lists the devices of the tailnet that run Aurelia, to
+invite or join; invites reach devices whose Jams are off; who is who is
+Tailscale's WhoIs. Built on Jams (`internal/tailnet`, `internal/jam`'s
+door, `tailnet.go`), with tests against a fake of Tailscale
+(`internal/tailnet`, `internal/jam/door_test.go`, `tailnet_app_test.go`).
+The client library adds about 1.3 MB to the app (pinned at v1.102.5,
+which needs no newer Go). Run in the app on Linux against this computer's
+real Tailscale (1.104.5): what was seen there is ticked.
+
+- [x] Tailscale read without root: the tailnet's devices, whose each is
+      (yours, someone else's, tagged), the people shared with; its
+      changes watched (a daemon of 1.104 turns away NotifyRateLimit: the
+      watch does without).
+- [x] The listener opens on the Tailscale addresses alone (100.x and
+      fd7a:…, port 47475): it answers there, with WhoIs of the caller,
+      and not on the LAN address nor on 127.0.0.1.
+- [x] A Jam held here goes through it: its own listener falls back to
+      another port on Linux, and the tailnet invite link names the
+      Tailscale address at 47475.
+- [x] A device of the same Tailscale user joins without the code and
+      without asking, by WhoIs, and plays the host's songs through it.
+- [ ] Two real devices: the list, Invite to a device whose Jams are off
+      and "Turn on and join", Join, Copy invite link for a device with
+      Aurelia closed, someone else's device asking as who they are; and a
+      shared-with person joining by the link. Only the tests do these yet,
+      with apps on one computer and a fake Tailscale.
+- [ ] macOS: the App Store app and the standalone app (both found by the
+      library's own way, not tried), and whether its firewall asks.
+- [ ] Windows: the named pipe, and the firewall's question as the
+      listener opens.
+
 ### Found on the way
 
 - [ ] Search's shortcuts ("/" and Cmd+K) focus the field's box, not its

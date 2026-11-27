@@ -302,7 +302,7 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 			}
 		}
 		if m.Item("Play").Chosen() && r.play != nil {
-			r.play()
+			a.playRow(r.play)
 		}
 		if r.extra != nil {
 			r.extra(m)
@@ -316,9 +316,17 @@ func (a *App) songRow(c *ui.Context, r songRow) ui.Element {
 		a.chosen.click(page, r.list, r.at, row.ClickModifiers())
 	}
 	if (play || row.DoubleClicked()) && r.play != nil {
-		r.play()
+		a.playRow(r.play)
 	}
 	return row
+}
+
+// playRow plays a song from its row: in a Jam a guest is, that song
+// alone is added.
+func (a *App) playRow(play func()) {
+	a.player.fromRow = true
+	defer func() { a.player.fromRow = false }()
+	play()
 }
 
 // dropBetween makes a song's row take songs of its list dragged to it:

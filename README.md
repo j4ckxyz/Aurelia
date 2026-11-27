@@ -206,6 +206,9 @@ installing a newer `.deb` instead.
   a picture not fetched yet shows as an icon until it is.
 - **The queue comes back.** Aurelia opens with the song it had, paused
   where it was.
+- **Jams (beta).** Listen together with people on the same network, each
+  on their own computer and with their own sound, even friends on another
+  server or none: see [Jams](#jams-beta).
 - **The system knows what plays**, with the album's cover: Control Center
   and the lock screen on macOS, the media flyout and the lock screen on
   Windows, and the desktop's media controls on Linux (MPRIS, as GNOME and
@@ -214,6 +217,88 @@ installing a newer `.deb` instead.
 - **Themes.** Fourteen built in, a theme editor that shows changes as you
   make them, and themes as JSON files you can write by hand. Themes made
   for Visual Studio Code, Firefox and Chrome import as they are.
+
+## Jams (beta)
+
+A Jam is listening together with people on the same network, as
+Spotify's Jams are: one person hosts, the others join, and everyone hears
+the same queue, each on their own computer. Turn it on in Settings ▸
+Beta; the player's bar then has a Jam button.
+
+- **Starting one.** Start a Jam shows a code, as K7Q X4R. Others join
+  with it from their own Jam button, or find your Jam among those nearby
+  and ask you to let them in. Copy invite gives the code with your
+  computer's address, for networks that do not let computers find one
+  another.
+- **Everyone adds songs.** A song played or added from anyone's library
+  joins the Jam's queue, marked with who added it. The host chooses
+  whether guests also play, pause, skip, seek and change the order, or
+  only add songs.
+- **In step, with your own sound.** Each computer plays the music itself,
+  within a fraction of a second of the host: on its own speakers or
+  headphones, at its own volume, through its own equalizer, spatial
+  audio, crossfade and vinyl. A guest whose connection drops keeps
+  playing and comes back in by itself.
+- **One copy is enough.** A guest of the same Jellyfin server plays the
+  songs from it, as ever. Songs a guest's server does not have play from
+  the host, which gets songs of a guest's server from that guest: so a
+  friend on another server, or with none at all ("Join a friend's Jam" on
+  the sign-in page), hears all of it. Only what is in the Jam's queue can
+  be fetched, and only by the people in it; nobody's server password or
+  sign-in is ever shared.
+- **Leaving.** Your own queue comes back, paused where it was. When the
+  host ends the Jam, the songs that came from guests leave the host's
+  queue.
+
+Jams work between computers that can reach one another: the same Wi-Fi
+or wired network, or the same tailnet (below). The host listens on TCP
+port 47475 (or another, when that is taken) and answers on UDP port
+47474. The first time, Windows asks whether to let Aurelia through its
+firewall, and macOS whether Aurelia may find devices on the local
+network: both need a yes. Networks that keep their devices apart, as in
+hotels and some offices, stop Jams too.
+
+### Jams over Tailscale
+
+With [Tailscale](https://tailscale.com) running and signed in, a Jam
+reaches every device of your tailnet, wherever it is, and the Jam's
+dialog has a **Tailscale** section: the devices of the tailnet that have
+Aurelia open, each with whose it is ("Yours", "Sam (sam@github)", or a
+tagged device's tags).
+
+- **Invite** sends a device an invite, even one whose Jams are off: it
+  asks "Ada invited you to a Jam (beta)", and **Turn on and join** turns
+  the beta on there and joins. A device of yours that had Aurelia open
+  before, but has it closed now or does not answer, gets **Copy invite
+  link** instead, as does anyone else: the link is at your Tailscale
+  address. **Join** joins a Jam a device of the tailnet holds.
+- **Who is who is Tailscale's word.** Every connection is checked with
+  Tailscale (WhoIs): invites show who really sent them, whatever they
+  claim, your own devices join your Jam without the code, and someone
+  else's device asks, as "Sam's ThinkPad (Sam) wants to join". Joining
+  on the local network with the code works as before.
+- **People you shared this computer with** show as "Can join you": they
+  can reach you, you cannot reach them, so they join with the tailnet
+  invite.
+- **What is open.** While Aurelia runs and Tailscale is connected, it
+  listens on TCP port 47475 of this computer's Tailscale addresses only,
+  never on the local network, the Jams' beta on or off. It answers
+  whether Aurelia is here (its version, the device's name, whether Jams
+  are on and a Jam is held) and takes invites, from devices of the
+  tailnet alone; the rest of Jams stays off until the beta is turned on.
+  Settings ▸ Beta ▸ **Let devices on my tailnet invite me to Jams** (on by
+  default) closes it. Tailscale encrypts what goes between its devices, so
+  a Jam goes over it as plain HTTP, and a proxy in the settings never
+  carries it.
+- **Finding Tailscale.** Aurelia asks Tailscale's own app, as its command
+  line does, so the `tailscale` command need not be installed: on Linux
+  at its socket (no root needed), on Windows at its named pipe, on macOS
+  the App Store app, the standalone app and the open-source tailscaled
+  alike. A Flatpak or Snap of Aurelia cannot reach Tailscale's socket, and
+  a tailscaled in userspace-networking mode has no Tailscale address to
+  listen on; there, the section does not show. With the standalone macOS
+  app, only an administrator's account may read what Aurelia needs to ask
+  it. Without Tailscale, nothing of it shows.
 
 ## Behind a network that blocks your server
 

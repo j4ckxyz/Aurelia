@@ -396,6 +396,9 @@ func (a *App) settingsPage(c *ui.Context) {
 			a.settingsHead(c, "Updates")
 			a.updatesCard(c)
 
+			a.settingsHead(c, "Beta")
+			a.card(c, func() { a.jamSettings(c) })
+
 			a.settingsHead(c, "About")
 			a.card(c, func() {
 				a.setting(c, "About Aurelia", "A native music player for Jellyfin, built with MyGo "+mygo.Version+". Icons by Lucide, under the ISC license. Aurelia is not affiliated with the Jellyfin project.", nil2)
