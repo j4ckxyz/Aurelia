@@ -263,7 +263,7 @@ func (a *App) debug(dir, line string) {
 					if j.state.Playing {
 						hp += j.guest.HostNow().Sub(time.UnixMilli(j.state.At))
 					}
-					out += fmt.Sprintf("host index=%d position=%dms playing=%v off=%dms\n", j.state.Index, hp.Milliseconds(), j.state.Playing, (st.Position - hp).Milliseconds())
+					out += fmt.Sprintf("host index=%d position=%dms playing=%v off=%dms lag=%dms clock=%dms catchUp=%dms seekCost=%dms\n", j.state.Index, hp.Milliseconds(), j.state.Playing, (st.Position - hp).Milliseconds(), j.stateLag.Milliseconds(), time.Until(j.guest.HostNow()).Milliseconds(), j.catchUp.Milliseconds(), j.seekCost.Milliseconds())
 				}
 				for i, s := range a.player.queue {
 					mark := " "

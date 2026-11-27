@@ -177,10 +177,10 @@ func (a *App) keepHouse() {
 	}
 }
 
-// jamClock keeps a Jam going, four times a second whether or not the
+// jamClock keeps a Jam going, ten times a second whether or not the
 // window draws: the host tells what changed, and a guest keeps in step.
 func (a *App) jamClock() {
-	for range time.Tick(250 * time.Millisecond) {
+	for range time.Tick(100 * time.Millisecond) {
 		if jamOn.Load() {
 			mygo.RunOnMain(a.jamTick)
 		}

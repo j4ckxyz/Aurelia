@@ -132,6 +132,13 @@ real Tailscale (1.104.5): what was seen there is ticked.
       by the time it took to load, and only 2.5 s was corrected. Guests
       now learn that time and move back in step past 300 ms: within
       ±30 ms over the relay, and through a relay of 900 ms each way.
+- [x] Pause and play in step (asked 2026-11-27): a guest paused late,
+      as the word came, and stayed off. Measured through a relay of one
+      queue for every connection (`slowlink`, as Tailscale's DERP is):
+      guests pause at the host's very place and play on within ~5 ms of
+      it; a link 2.4 times the song's bit rate, cold, is in step after
+      ~15 s and then within ±50 ms, the host's word taking the link's
+      latency (0.15 s) and not 2.3 s, now that songs come only 30 s ahead.
 - [ ] Two real devices still: Invite to a device whose Jams are off and
       "Turn on and join", Join from the list, Copy invite link for a
       device with Aurelia closed, someone else's device asking as who

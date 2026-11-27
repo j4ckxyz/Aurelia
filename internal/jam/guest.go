@@ -220,9 +220,11 @@ func (g *Guest) session(conn *websocket.Conn) (why string, ended bool) {
 				return
 			case msg = <-g.out:
 			case <-ping.C:
-				// A few quickly, to set the clock, then every few seconds.
+				// A few quickly, to set the clock, then every few seconds:
+				// of a minute of them, the quickest says it best, as one
+				// that waited behind a song on a slow link does not.
 				pings++
-				next := 10 * time.Second
+				next := 2 * time.Second
 				if pings < 6 {
 					next = 250 * time.Millisecond
 				}
@@ -272,7 +274,7 @@ func (g *Guest) clock(t0, t1, t3 int64) {
 	g.clockMu.Lock()
 	defer g.clockMu.Unlock()
 	g.samples = append(g.samples, s)
-	if len(g.samples) > 8 {
+	if len(g.samples) > 30 {
 		g.samples = g.samples[1:]
 	}
 	best := g.samples[0]

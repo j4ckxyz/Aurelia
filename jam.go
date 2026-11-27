@@ -80,7 +80,15 @@ type jamState struct {
 	// time to have it from where it comes, the host over a slow link
 	// most of all. It is learned from how far behind each lands, and
 	// started that much further on.
-	catchUp  time.Duration
+	catchUp time.Duration
+	// seekCost is how late a move within what is loaded already is heard:
+	// the time to decode from there. near is whether the last move was
+	// such, and measure whether how it landed is still to be learned.
+	seekCost time.Duration
+	near     bool
+	measure  bool
+	// stateLag is how long the last state took to come from the host.
+	stateLag time.Duration
 	hostName string
 
 	// The dialog.
@@ -225,7 +233,7 @@ func (a *App) resetJam() {
 	j.images = map[string]string{}
 	j.by, j.wire = map[*library.Song]string{}, map[*library.Song]*jam.Song{}
 	j.members, j.requests, j.state, j.away, j.pubKey = nil, nil, nil, false, ""
-	j.catchUp = 0
+	j.catchUp, j.seekCost, j.near, j.measure, j.stateLag = 0, 0, false, false, 0
 	j.share = newJamShare(a.clientNow(), a.serverID())
 }
 
@@ -846,6 +854,7 @@ func (a *App) jamTakeState() {
 	if st == nil {
 		return
 	}
+	j.stateLag = j.guest.HostNow().Sub(time.UnixMilli(st.At))
 	p := a.player
 	old := p.current()
 	songs := make([]*library.Song, 0, len(st.Queue))
@@ -949,7 +958,7 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 		p.index = st.Index
 		if st.Playing {
 			p.playFrom(st.Index, pos+lead)
-			j.settled = time.Now()
+			j.settled, j.near, j.measure = time.Now(), false, true
 		} else {
 			// The host's song, paused where it is: it loads when it plays.
 			p.reportStop()
@@ -968,6 +977,26 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 	if off < 0 {
 		off = -off
 	}
+	// seek moves to where the host is heard, allowing for how late a move
+	// lands: one within what is loaded is heard at once, one beyond it
+	// once that has come from where the song comes from.
+	seek := func(playing bool) {
+		loadedTo := time.Duration(local.Loaded * float64(local.Duration))
+		near := local.Loaded >= 1 || pos+3*time.Second < loadedTo
+		to := pos
+		if playing {
+			// What the device holds is heard after: a paused one starts
+			// from nothing, and holds none.
+			to += p.engine.Lag()
+		}
+		if near {
+			to += j.seekCost
+		} else {
+			to += j.catchUp
+		}
+		p.engine.SeekTo(to)
+		j.settled, j.near, j.measure = time.Now(), near, true
+	}
 	switch {
 	case !st.Playing:
 		if !p.paused && !p.finished {
@@ -977,42 +1006,60 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 			}
 			p.reportProgress(true)
 		}
-		if off > 1500*time.Millisecond && p.engine != nil && !p.finished {
+		// Paused where the host is, to the moment, though the pause came
+		// late: both go on from the same place.
+		if off > 40*time.Millisecond && p.engine != nil && !p.finished {
 			p.engine.SeekTo(pos)
 		}
 	case p.finished:
 		// It ended here first: it plays again where the host is.
 		p.playFrom(st.Index, pos+lead)
-		j.settled = time.Now()
+		j.settled, j.near, j.measure = time.Now(), false, true
 	case p.paused:
+		// Moved on first by as long as the host has played since, then
+		// on: heard where the host is, not that much behind.
 		p.paused = false
 		if p.engine != nil {
-			p.engine.Resume()
-			if off > 1500*time.Millisecond {
-				p.engine.SeekTo(pos + lead)
-				j.settled = time.Now()
+			if off > 40*time.Millisecond {
+				seek(false)
+				// The sound starting again takes a moment of its own:
+				// what is learned is of moves while it plays.
+				j.measure = false
 			}
+			p.engine.Resume()
 		}
 		p.reportProgress(true)
-	case off > jamDrift && (time.Since(j.settled) > 3*time.Second || fresh && off > 2*time.Second) && !local.Buffering && p.engine != nil:
-		// Out of step: back in. Soon after the last time, how far off it
-		// is says how late it was heard, which the next time allows for;
-		// not when the host has jumped.
-		jumped := fresh && off > 2*time.Second
-		if !jumped && time.Since(j.settled) < 20*time.Second && off < 8*time.Second {
-			j.catchUp = min(max(j.catchUp-drift, 0), 8*time.Second)
-			lead = j.catchUp + p.engine.Lag()
+	case p.engine == nil || local.Buffering:
+	case fresh && off > 2*time.Second:
+		// The host jumped: there at once.
+		seek(true)
+	case time.Since(j.settled) < 2*time.Second:
+		// Let be: it has just been moved.
+	default:
+		// How far off it is a while after a move says how late the move
+		// was heard, which the next allows for.
+		if j.measure {
+			j.measure = false
+			if time.Since(j.settled) < 20*time.Second && off < 8*time.Second {
+				if j.near {
+					j.seekCost = min(max(j.seekCost-drift, 0), 300*time.Millisecond)
+				} else {
+					j.catchUp = min(max(j.catchUp-drift, 0), 8*time.Second)
+				}
+			}
 		}
-		p.engine.SeekTo(pos + lead)
-		j.settled = time.Now()
+		if off > jamDrift && time.Since(j.settled) > 3*time.Second {
+			// Out of step: back in.
+			seek(true)
+		}
 	}
 	a.jamArm()
 }
 
 // jamDrift is how far a guest may be from the host before it is moved
-// back in step: less than is heard as an echo between two rooms, more
-// than the jitter of where each says it is.
-const jamDrift = 300 * time.Millisecond
+// back in step: well under what is heard as late, more than the jitter
+// of where each says it is and of the clocks.
+const jamDrift = 80 * time.Millisecond
 
 // jamArm has the engine ready the song after, which the queue's change
 // may have moved.
@@ -1160,19 +1207,24 @@ func (a *App) jamOpener(s *library.Song) func() (*audio.File, error) {
 		return nil
 	}
 	var u string
+	var ahead time.Duration
 	switch {
 	case a.jam.guest != nil:
 		u = a.jam.guest.MediaURL(key)
+		// From the host, over what may be a slow link: kept only so far
+		// ahead of where it plays, for what the host says to come through
+		// at once.
+		ahead = 30 * time.Second
 	case a.jam.host != nil:
 		u = a.jam.host.PullURL(key)
 	default:
 		return func() (*audio.File, error) { return nil, errors.New("the Jam it was of has ended") }
 	}
-	cache := a.player.cache
+	cache, dur := a.player.cache, s.Duration()
 	return func() (*audio.File, error) {
-		return cache.Open("jam-"+key, func(ctx context.Context) (*http.Request, error) {
+		return cache.OpenPaced("jam-"+key, func(ctx context.Context) (*http.Request, error) {
 			return http.NewRequestWithContext(ctx, "GET", u, nil)
-		})
+		}, ahead, dur)
 	}
 }
 

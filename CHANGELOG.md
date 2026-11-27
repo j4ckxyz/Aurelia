@@ -1,5 +1,20 @@
 # Changes
 
+## 0.8.2
+
+- Jams: pausing pauses guests at the very place the host did, and
+  playing again starts them where the host is, not as late as the word
+  of it took to reach them. Guests keep within a tenth of a second of
+  the host, not a third, and the host tells of a change within a tenth
+  of a second.
+- Jams over slow links, as Tailscale's relays: a guest downloads the
+  host's songs only half a minute ahead of where it plays, so the
+  host's word of a pause or a skip no longer waits behind a whole song
+  coming down the same link. Its clock is set from more of the host's
+  answers, the quickest of a minute of them.
+- A song that was downloading, played again from another place or
+  skipped to, goes on downloading where it was instead of starting over.
+
 ## 0.8.1
 
 - Jams: guests stay in step with the host over slow links, as over
