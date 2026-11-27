@@ -2,6 +2,7 @@ package jam
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,6 +50,8 @@ type Host struct {
 	// The host's room at relays, and its servers there.
 	relayOnce        sync.Once
 	room, roomSecret string
+	cert             *tls.Certificate
+	pin              string
 
 	mu       sync.Mutex
 	closed   bool

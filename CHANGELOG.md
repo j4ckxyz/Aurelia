@@ -1,5 +1,21 @@
 # Changes
 
+## 0.9.1
+
+- Jams from anywhere, out of the box: a Jam you host is reached through
+  Aurelia's public relay, `jam.j4ck.xyz`, as well as on its network, and
+  its invite works on any network. Settings ▸ Beta ▸ Public relay turns
+  it off; Your own relay sets one of yours instead, with a link to how
+  to run one.
+- What goes through a relay is encrypted from end to end: the guest
+  speaks TLS with the host inside the relay's tunnel and checks the
+  host's key against the fingerprint the invite carries. The relay
+  passes on what it cannot read, nor change.
+- The relay (`relay/`) speaks WebSockets, which pass through proxies as
+  Cloudflare's, and can be run open to all (`-open`), with limits on
+  what one address, or one Jam, may have of it. Relays and Aurelia
+  0.9.0 do not speak with those of 0.9.1: update both.
+
 ## 0.9.0
 
 - Jams from any network, through a relay of your own: `relay/` is a

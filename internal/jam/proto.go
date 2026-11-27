@@ -320,7 +320,7 @@ const InviteScheme = "aurelia://jam/"
 func Invite(addr, code string) string { return InviteScheme + addr + "/" + code }
 
 // InviteVia returns the invite of a host at addr with code that is also
-// reached through a relay, at via: aurelia://jam/192.168.1.20:47475/K7QX4R?via=https%3A%2F%2Frelay.example%2Fr%2F….
+// reached through a relay, at via: aurelia://jam/192.168.1.20:47475/K7QX4R?via=https%3A%2F%2Frelay.example%2Fv2%2Fr%2F…%23….
 // A guest tries the address of the network first, then the relay.
 func InviteVia(addr, code, via string) string {
 	if via == "" {
@@ -368,8 +368,8 @@ func ParseTarget(s string) (t Target, ok bool) {
 
 // validVia reports whether a relay's address of a Jam is one.
 func validVia(via string) bool {
-	u, err := url.Parse(via)
-	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && strings.Contains(u.Path, "/r/")
+	_, _, _, ok := parseRelayAddr(via)
+	return ok
 }
 
 // ParseJoin reads what a user typed to join: an invite, an address and a

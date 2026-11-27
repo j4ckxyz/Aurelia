@@ -126,12 +126,14 @@ type Settings struct {
 	Jam       bool `json:"jam,omitempty"`
 	JamLocked bool `json:"jamLocked,omitempty"`
 	JamHidden bool `json:"jamHidden,omitempty"`
-	// JamRelay is the user's Jam relay (relay/ in Aurelia's source), as
-	// https://relay.example, and JamRelayKey its key: the user's Jams are
-	// reached through it from any network, and codes not found on this
-	// one are looked for there.
-	JamRelay    string `json:"jamRelay,omitempty"`
-	JamRelayKey string `json:"jamRelayKey,omitempty"`
+	// JamRelay is the user's own Jam relay (relay/ in Aurelia's source),
+	// as https://relay.example, and JamRelayKey its key, "" for one open
+	// to all: the user's Jams are reached through it from any network,
+	// and codes not found on this one are looked for there. Without one,
+	// Aurelia's public relay is, unless JamPublicRelayOff.
+	JamRelay          string `json:"jamRelay,omitempty"`
+	JamRelayKey       string `json:"jamRelayKey,omitempty"`
+	JamPublicRelayOff bool   `json:"jamPublicRelayOff,omitempty"`
 	// TailnetInvitesOff keeps the devices of the user's tailnet from
 	// seeing that Aurelia is open here and inviting the user to Jams,
 	// which they may, the beta on or not, unless it is set.
