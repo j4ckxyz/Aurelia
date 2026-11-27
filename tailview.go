@@ -164,12 +164,22 @@ func (a *App) tailInviteDialog(c *ui.Context) {
 				who += "."
 			}
 			ui.Text(c, who).FontSize(12).TextColor(p.faint).MaxLines(3)
+			if inv.oneWay {
+				ui.Text(c, "Their computer is shared with you on Tailscale only one way: they can reach yours, but yours can't reach theirs, so you can't join their Jam. Host one here and they can join you.").MaxLines(5)
+			}
 			ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
 				if a.textButton(c, "Not now").Clicked() {
 					a.answerInvite(inv.id, false)
 				}
 				label := "Turn on and join"
 				switch {
+				case inv.oneWay && a.jam.host != nil:
+					label = "Show your Jam"
+				case inv.oneWay && !a.signedIn():
+					// Hosting needs a server: there is nothing to offer.
+					return
+				case inv.oneWay:
+					label = "Host a Jam"
 				case a.jam.in():
 					label = "Leave this Jam and join"
 				case a.settings.Jam:
@@ -216,7 +226,15 @@ func (a *App) tailInviteBanner(c *ui.Context) {
 		if a.textButton(c, "Not now").Clicked() {
 			a.answerInvite(inv.id, false)
 		}
-		if a.pillButton(c, "", "Join", true).Clicked() {
+		label := "Join"
+		if inv.oneWay {
+			// Their Jam can't be reached from here: they join one here.
+			label = "Host"
+			if a.jam.host != nil {
+				label = "OK"
+			}
+		}
+		if a.pillButton(c, "", label, true).Clicked() {
 			a.answerInvite(inv.id, true)
 		}
 	})
