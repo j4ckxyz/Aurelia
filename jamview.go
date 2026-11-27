@@ -292,9 +292,10 @@ func (a *App) jamHostView(c *ui.Context) {
 	})
 	switch {
 	case j.relayAddr != "":
-		a.jamLine(c, "circle-check", p.success, "Reachable through your relay: the invite works on any network.")
+		a.jamLine(c, "circle-check", p.success, "Reachable through "+a.jamRelayName()+": the invite works on any network, encrypted from end to end.")
 	case j.relayErr != "":
-		a.jamLine(c, "circle-alert", p.warning, "Your relay: "+j.relayErr+". On this network, the Jam works as ever.")
+		name := a.jamRelayName()
+		a.jamLine(c, "circle-alert", p.warning, strings.ToUpper(name[:1])+name[1:]+": "+j.relayErr+". On this network, the Jam works as ever.")
 	}
 	ui.Text(c, "PEOPLE").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Margin(4, 0, 0)
 	ui.Column(c).Gap(2).Children(func() {
@@ -424,7 +425,7 @@ func (a *App) jamGuestView(c *ui.Context) {
 
 // jamSettings is the Jam's switch, among the settings in beta.
 func (a *App) jamSettings(c *ui.Context) {
-	a.setting(c, "Jams", "Listen together with people on the same network: everyone hears the same queue on their own computer, with their own sound settings, and anyone can add songs. Songs one person's server lacks play from the person who added them.", func() {
+	a.setting(c, "Jams", "Listen together, on the same network or from anywhere: everyone hears the same queue on their own computer, with their own sound settings, and anyone can add songs. Songs one person's server lacks play from the person who added them.", func() {
 		if ui.Switch(c.Key("jam-beta"), &a.settings.Jam).Label("Jams").Changed() {
 			if !a.settings.Jam {
 				a.stopJam()
@@ -452,26 +453,44 @@ func (a *App) jamRelaySettings(c *ui.Context) {
 	if !j.relayEdited {
 		j.relayEdit, j.relayKeyEdit = a.settings.JamRelay, a.settings.JamRelayKey
 	}
-	a.setting(c, "Jam relay", "Your own relay (relay/ in Aurelia's source), on a server of yours: Jams you host are reached through it from any network, and codes not found on this one are looked for there. Its address and key.", func() {
+	own := strings.TrimSpace(a.settings.JamRelay) != ""
+	public := !a.settings.JamPublicRelayOff
+	help := "Jams you host can be joined from any network through jam.j4ck.xyz, run by Aurelia's developer, and codes not found on this one are looked for there. Invites are encrypted from end to end: the relay passes on what it cannot read. It sees only who connects, and how much."
+	if own {
+		help = "Your own relay is used instead, below."
+	}
+	a.setting(c, "Public relay", help, func() {
+		if ui.Switch(c.Key("jam-public-relay"), &public).Label("Public relay").Disabled(own).Changed() {
+			a.settings.JamPublicRelayOff = !public
+			a.saveSettings()
+			a.jamRelay()
+		}
+	})
+	a.setting(c, "Your own relay", "A relay on a server of yours (relay/ in Aurelia's source), used instead of the public one: its address, and its key, if it has one.", func() {
 		ui.Column(c).Gap(6).Width(250).Children(func() {
 			if ui.TextInput(c.Key("jam-relay"), &j.relayEdit).Placeholder("https://relay.example.com").Label("Relay address").Changed() {
 				j.relayEdited = true
 			}
-			if ui.TextInput(c.Key("jam-relay-key"), &j.relayKeyEdit).Password().Placeholder("Key").Label("Relay key").Changed() {
+			if ui.TextInput(c.Key("jam-relay-key"), &j.relayKeyEdit).Password().Placeholder("Key, if it has one").Label("Relay key").Changed() {
 				j.relayEdited = true
 			}
+			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+				if a.pillButton(c, "external-link", "Run your own", false).Tooltip(relayDocs).Clicked() {
+					c.OpenURL(relayDocs)
+				}
+				changed := strings.TrimSpace(j.relayEdit) != a.settings.JamRelay || strings.TrimSpace(j.relayKeyEdit) != a.settings.JamRelayKey
+				if a.pillButton(c, "", "Save", changed).Disabled(!changed).Clicked() {
+					base := strings.TrimSuffix(strings.TrimSpace(j.relayEdit), "/")
+					if base != "" && !strings.HasPrefix(base, "https://") && !strings.HasPrefix(base, "http://") {
+						base = "https://" + base
+					}
+					a.settings.JamRelay, a.settings.JamRelayKey = base, strings.TrimSpace(j.relayKeyEdit)
+					j.relayEdit, j.relayEdited = base, false
+					a.saveSettings()
+					a.jamRelay()
+				}
+			})
 		})
-		changed := strings.TrimSpace(j.relayEdit) != a.settings.JamRelay || strings.TrimSpace(j.relayKeyEdit) != a.settings.JamRelayKey
-		if a.pillButton(c, "", "Save", changed).Disabled(!changed).Clicked() {
-			base := strings.TrimSuffix(strings.TrimSpace(j.relayEdit), "/")
-			if base != "" && !strings.HasPrefix(base, "https://") && !strings.HasPrefix(base, "http://") {
-				base = "https://" + base
-			}
-			a.settings.JamRelay, a.settings.JamRelayKey = base, strings.TrimSpace(j.relayKeyEdit)
-			j.relayEdit, j.relayEdited = base, false
-			a.saveSettings()
-			a.jamRelay()
-		}
 	})
 }
 

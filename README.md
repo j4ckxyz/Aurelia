@@ -264,24 +264,36 @@ Beta; the player's bar then has a Jam button.
 
 Jams work between computers that can reach one another: the same Wi-Fi
 or wired network, the same tailnet (below), or any two networks through
-a relay of your own (below that). The host listens on TCP
+a relay (below that). The host listens on TCP
 port 47475 (or another, when that is taken) and answers on UDP port
 47474. The first time, Windows asks whether to let Aurelia through its
 firewall, and macOS whether Aurelia may find devices on the local
 network: both need a yes. Networks that keep their devices apart, as in
 hotels and some offices, stop Jams too.
 
-### Jams through your relay
+### Jams from anywhere, through a relay
 
-A small server program, [`relay/`](relay/), run on a server of yours (a
-few megabytes of memory), lets a Jam be joined from any network. Set its
-address and key in Settings ▸ Beta ▸ **Jam relay**: a Jam you host then
-connects to it as well, says "Reachable through your relay", and its
-invite names the relay. A guest still tries the host's address on its own
-network first, and the relay only when the host is not there; a guest
-with only the code looks for it on the network, then on the relay set in
-its own settings. Guests need no key: the code, or the host's yes, lets
-them in. [relay/README.md](relay/README.md) says how to run it.
+A Jam you host also connects to Aurelia's public relay, `jam.j4ck.xyz`,
+run by Aurelia's developer, and its invite then works on any network: the
+Jam's dialog says "Reachable through Aurelia's public relay". A guest
+still tries the host's address on its own network first, and the relay
+only when the host is not there; a guest with only the code looks for it
+on the network, then on the relay. Guests need no key: the code, or the
+host's yes, lets them in.
+
+What goes through the relay is encrypted from end to end. Each Jam has a
+key of its own, made when it starts, whose fingerprint the invite
+carries; the guest speaks TLS with the host inside the relay's tunnel,
+and checks the host's key against it, so the relay passes on what it
+cannot read, nor change, and a relay that answered as the host would be
+found out before anything is said to it. The relay sees who connects, and
+how much. A guest who joins with the code alone takes the host's
+fingerprint from the relay, so an invite is the surer way.
+
+Settings ▸ Beta ▸ **Public relay** turns it off. **Your own relay** sets
+one of your own instead: [`relay/`](relay/) is a small server program (a
+few megabytes of memory) to run on a server of yours, and
+[relay/README.md](relay/README.md) says how.
 
 ### Jams over Tailscale
 

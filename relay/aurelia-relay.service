@@ -2,6 +2,9 @@
 #   sudo systemctl edit aurelia-relay
 #   [Service]
 #   Environment=AURELIA_RELAY_KEY=…
+# or, for a public relay, which needs none, its flags:
+#   ExecStart=
+#   ExecStart=/usr/local/bin/aurelia-relay -addr 127.0.0.1:8787 -open -ip-header CF-Connecting-IP
 [Unit]
 Description=Aurelia's Jam relay
 After=network-online.target
@@ -13,8 +16,8 @@ ExecStart=/usr/local/bin/aurelia-relay -addr 127.0.0.1:8787 -behind-proxy
 Restart=on-failure
 RestartSec=5
 # Small, and kept so: it holds nothing but the Jams passing through.
-MemoryMax=96M
-Environment=GOMEMLIMIT=64MiB
+MemoryMax=192M
+Environment=GOMEMLIMIT=128MiB
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

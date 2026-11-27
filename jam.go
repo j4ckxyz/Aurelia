@@ -312,8 +312,42 @@ func (a *App) startJam() {
 	a.jamRelay()
 }
 
-// jamRelay connects the Jam held here to the user's relay, as the
-// settings name one, or stops: it is reached through it from anywhere.
+// PublicRelay is Aurelia's public Jam relay, which anyone's Jams are
+// reached through from any network, unless the user has a relay of their
+// own or turns it off. It needs no key: it carries tunnels between a host
+// and its guests that it cannot read (see internal/jam/relay.go), and
+// limits what anyone may have of it.
+const PublicRelay = "https://jam.j4ck.xyz"
+
+// publicRelay is PublicRelay, but in tests, which reach no server of the
+// Internet.
+var publicRelay = PublicRelay
+
+// relayDocs is where running a relay of one's own is told of.
+const relayDocs = "https://github.com/j4ckxyz/Aurelia/tree/main/relay#readme"
+
+// jamRelayBase is the relay the user's Jams are reached through, and its
+// key: the user's own, or the public one, or none ("").
+func (a *App) jamRelayBase() (base, key string) {
+	if base = strings.TrimSpace(a.settings.JamRelay); base != "" {
+		return base, strings.TrimSpace(a.settings.JamRelayKey)
+	}
+	if a.settings.JamPublicRelayOff {
+		return "", ""
+	}
+	return publicRelay, ""
+}
+
+// jamRelayName is how the relay is named to the user.
+func (a *App) jamRelayName() string {
+	if strings.TrimSpace(a.settings.JamRelay) != "" {
+		return "your relay"
+	}
+	return "Aurelia's public relay"
+}
+
+// jamRelay connects the Jam held here to the relay, as the settings name
+// one, or stops: it is reached through it from anywhere.
 func (a *App) jamRelay() {
 	j := &a.jam
 	if j.relayStop != nil {
@@ -322,8 +356,8 @@ func (a *App) jamRelay() {
 	}
 	j.relayAddr, j.relayErr = "", ""
 	h := j.host
-	base, key := strings.TrimSpace(a.settings.JamRelay), strings.TrimSpace(a.settings.JamRelayKey)
-	if h == nil || base == "" || key == "" {
+	base, key := a.jamRelayBase()
+	if h == nil || base == "" {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -434,7 +468,8 @@ func (a *App) joinTarget(t jam.Target) {
 	if j.in() || j.joining {
 		return
 	}
-	relay := strings.TrimSpace(a.settings.JamRelay)
+	relay, _ := a.jamRelayBase()
+	relayName := a.jamRelayName()
 	a.stopLooking()
 	ctx, cancel := context.WithCancel(context.Background())
 	j.joining, j.waiting, j.joinErr, j.cancel = true, false, "", cancel
@@ -537,9 +572,9 @@ func (a *App) joinTarget(t jam.Target) {
 		case via != "":
 			g, err = jam.Join(ctx, via, hello, hs)
 		case lookErr != nil:
-			err = errors.New("No Jam with that code was found on this network, nor on your relay (" + friendly(lookErr) + ").")
+			err = errors.New("No Jam with that code was found on this network, nor on " + relayName + " (" + friendly(lookErr) + ").")
 		case relay != "":
-			err = errors.New("No Jam with that code was found on this network, nor on your relay.")
+			err = errors.New("No Jam with that code was found on this network, nor on " + relayName + ".")
 		default:
 			err = errors.New("No Jam with that code was found on this network. Ask the host for their invite, which has their address.")
 		}

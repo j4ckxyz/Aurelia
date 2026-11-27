@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -62,7 +61,7 @@ type clockSample struct {
 // host is on the network.
 var client = &http.Client{Transport: &http.Transport{
 	Proxy:               nil,
-	DialContext:         (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+	DialContext:         dialJam,
 	MaxIdleConnsPerHost: 8,
 	IdleConnTimeout:     90 * time.Second,
 }}
@@ -80,6 +79,13 @@ func (e *ErrDenied) Error() string { return e.Why }
 // in, Join waits for it until ctx ends.
 func Join(ctx context.Context, addr string, hello Hello, hs Handlers) (*Guest, error) {
 	hello.Proto = Proto
+	if IsRelayAddr(addr) {
+		// The host's fingerprint, which the tunnels check its key by.
+		var err error
+		if addr, err = pinned(ctx, addr); err != nil {
+			return nil, err
+		}
+	}
 	g := &Guest{Handlers: hs, addr: addr, hello: hello, out: make(chan Msg, 64)}
 	conn, err := g.dial(ctx, hello, hs.Waiting)
 	if err != nil {

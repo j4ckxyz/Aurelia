@@ -219,9 +219,14 @@ func (a *App) debug(dir, line string) {
 					a.joinTarget(t)
 				}
 			case "relay":
-				// "jam relay <url> <key>": the user's relay, as Settings
-				// sets it; "jam relay" alone, none.
+				// "jam relay <url> [key]": the user's own relay, as Settings
+				// sets it; "jam relay" alone, none: the public one, unless
+				// "jam relay off".
 				base, key, _ := strings.Cut(rest, " ")
+				a.settings.JamPublicRelayOff = base == "off"
+				if base == "off" {
+					base = ""
+				}
 				a.settings.JamRelay, a.settings.JamRelayKey = base, key
 				a.jamRelay()
 			case "ask":
