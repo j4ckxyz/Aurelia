@@ -177,10 +177,10 @@ func (a *App) keepHouse() {
 	}
 }
 
-// jamClock keeps a Jam going, four times a second whether or not the
+// jamClock keeps a Jam going, ten times a second whether or not the
 // window draws: the host tells what changed, and a guest keeps in step.
 func (a *App) jamClock() {
-	for range time.Tick(250 * time.Millisecond) {
+	for range time.Tick(100 * time.Millisecond) {
 		if jamOn.Load() {
 			mygo.RunOnMain(a.jamTick)
 		}
@@ -217,7 +217,7 @@ func (a *App) mediaKeys() {
 		return // the system sends them to the app playing, with what it shows of it
 	}
 	for key, fn := range map[string]func(){
-		"MediaPlayPause":     func() { a.player.toggle() },
+		"MediaPlayPause":     func() { a.player.toggleHere() },
 		"MediaNextTrack":     func() { a.player.skip() },
 		"MediaPreviousTrack": func() { a.player.previous() },
 	} {

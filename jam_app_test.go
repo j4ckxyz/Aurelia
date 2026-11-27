@@ -3,6 +3,8 @@ package main
 import (
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"aurelia/internal/audio"
+	"aurelia/internal/jam"
 	"aurelia/internal/jellyfin"
 )
 
@@ -237,5 +240,125 @@ func TestJamSetting(t *testing.T) {
 	click(t, tt, "End Jam")
 	if a.jam.host != nil {
 		t.Error("the Jam did not end")
+	}
+}
+
+// The Jam's log tells who did what: a guest's asks as the guest's, the
+// host's own as the host's, and who came; guests have it too, and see it.
+func TestJamLog(t *testing.T) {
+	host := testAppWith(t, streams)
+	host.startJam()
+	t.Cleanup(host.stopJam)
+	guest := guestOf(t, host, "Bo", "srv")
+	apps := []*App{host, guest}
+	last := func(a *App) jam.Event {
+		events, _ := a.jamEvents()
+		if len(events) == 0 {
+			return jam.Event{}
+		}
+		return events[len(events)-1]
+	}
+	both(t, apps, "Bo's coming told", func() bool { e := last(host); return e.Op == jam.EvJoined && e.Who == "Bo" })
+	host.player.play(host.lib.AlbumSongs("al1"), 0)
+	if e := last(host); e.Op != jam.EvStart || !e.Host || e.Who != host.jamName() || e.Song == "" {
+		t.Errorf("the host played: %+v", e)
+	}
+	host.jamPublish()
+	both(t, apps, "the song", func() bool { return guest.player.current() != nil && guest.jam.state != nil && guest.jam.state.Playing })
+	// Bo pauses, from the window: for everyone, and told as Bo's.
+	guest.player.toggle()
+	both(t, apps, "Bo's pause", func() bool { return !host.player.playing() && last(guest).Op == jam.OpPause })
+	if e := last(host); e.Who != "Bo" || e.Host {
+		t.Errorf("the pause: %+v", e)
+	}
+	guest.player.toggle()
+	both(t, apps, "Bo's play", func() bool { return host.player.playing() && last(host).Op == jam.OpResume })
+	guest.player.skip()
+	both(t, apps, "Bo's skip", func() bool { return last(guest).Op == jam.OpSkip })
+	if e := last(host); e.Who != "Bo" || e.Song != host.player.current().Name {
+		t.Errorf("the skip: %+v", e)
+	}
+	// A slider dragged is one move.
+	host.player.seek(10 * time.Second)
+	host.player.seek(20 * time.Second)
+	if events, _ := host.jamEvents(); events[len(events)-2].Op == jam.OpSeek || last(host).Position != 20000 {
+		t.Errorf("two moves: %+v", events[len(events)-2:])
+	}
+	gt := ui.NewTester(guest.view, 1240, 900)
+	guest.openJam()
+	gt.Frame()
+	wantTexts(t, gt, "ACTIVITY", "skipped to", "paused", "played on")
+	if dir := os.Getenv("AURELIA_SHOTS"); dir != "" {
+		savePNG(t, filepath.Join(dir, "jam-log-guest.png"), gt.Image())
+		ht := ui.NewTester(host.view, 1240, 900)
+		host.openJam()
+		ht.Frame()
+		savePNG(t, filepath.Join(dir, "jam-log-host.png"), ht.Image())
+	}
+	// What happens on the way is not told: Bo's songs going as Bo leaves.
+	n := len(host.jam.log)
+	host.jam.quiet++
+	host.player.skip()
+	host.jam.quiet--
+	if len(host.jam.log) != n {
+		t.Error("a quiet skip is told")
+	}
+}
+
+// A guest the system pauses, by its media keys, its headphones or its
+// sleep, pauses alone: the Jam goes on, and it catches up as it plays on,
+// or wakes.
+func TestJamPauseHere(t *testing.T) {
+	host := testAppWith(t, streams)
+	host.startJam()
+	t.Cleanup(host.stopJam)
+	guest := guestOf(t, host, "Bo", "srv")
+	apps := []*App{host, guest}
+	host.player.play(host.lib.AlbumSongs("al1"), 0)
+	host.jamPublish()
+	both(t, apps, "the song", func() bool { return guest.jam.state != nil && guest.jam.state.Playing && guest.player.playing() })
+	logged := len(host.jam.log)
+	guest.player.toggleHere()
+	if !guest.jam.selfPaused || guest.player.playing() {
+		t.Fatal("the guest plays on")
+	}
+	// The host is not asked; a new state does not play it again.
+	host.player.skip()
+	host.jamPublish()
+	both(t, apps, "the next song", func() bool { return guest.jam.state.Index == host.player.index })
+	if !host.player.playing() || guest.player.playing() {
+		t.Errorf("host playing %v, guest playing %v", host.player.playing(), guest.player.playing())
+	}
+	for _, e := range host.jam.log[logged:] {
+		if e.Op == jam.OpPause {
+			t.Errorf("the host was paused: %+v", e)
+		}
+	}
+	gt := ui.NewTester(guest.view, 1240, 900)
+	guest.openJam()
+	gt.Frame()
+	wantTexts(t, gt, "Paused here only. The Jam goes on for everyone else.")
+	// Played on, from the system or the window: where the host is.
+	guest.player.toggleHere()
+	if guest.jam.selfPaused || !guest.player.playing() || guest.player.current().ID != host.player.current().ID {
+		t.Errorf("caught up: paused alone %v, playing %v", guest.jam.selfPaused, guest.player.playing())
+	}
+	// The system pauses it as it goes to sleep: it catches up as it wakes.
+	guest.player.pauseHere()
+	guest.jamSlept(true)
+	if guest.player.playing() {
+		t.Fatal("asleep, it plays")
+	}
+	guest.jamSlept(false)
+	if guest.jam.selfPaused || !guest.player.playing() {
+		t.Error("awake, it is still paused")
+	}
+	// Paused by hand long before it slept, it stays paused.
+	guest.player.pauseHere()
+	guest.jam.selfPausedAt = time.Now().Add(-time.Hour)
+	guest.jamSlept(true)
+	guest.jamSlept(false)
+	if !guest.jam.selfPaused {
+		t.Error("a pause of an hour before is undone by waking")
 	}
 }

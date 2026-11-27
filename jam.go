@@ -68,6 +68,21 @@ type jamState struct {
 	pubPlay  bool
 	requests []jam.Request
 	wire     map[*library.Song]*jam.Song
+	// log is what was done in the Jam; actor is the guest whose ask is
+	// being done, "" for the host; quiet counts what is done on the
+	// way to something else, which is not told of.
+	log     []jam.Event
+	logID   int64
+	actor   string
+	quiet   int
+	logged  int64 // the guest's: the last event told of by a toast
+	logOpen bool  // the whole log shows, not the latest
+	// selfPaused is a guest paused on its own, by its keyboard's keys,
+	// its headphones or its sleep, while the Jam goes on; when, and when
+	// the computer last went to sleep.
+	selfPaused   bool
+	selfPausedAt time.Time
+	sleptAt      time.Time
 
 	// The guest's: the session its callbacks are of, the last state, and
 	// the queue it had before, which comes back as it leaves.
@@ -80,7 +95,15 @@ type jamState struct {
 	// time to have it from where it comes, the host over a slow link
 	// most of all. It is learned from how far behind each lands, and
 	// started that much further on.
-	catchUp  time.Duration
+	catchUp time.Duration
+	// seekCost is how late a move within what is loaded already is heard:
+	// the time to decode from there. near is whether the last move was
+	// such, and measure whether how it landed is still to be learned.
+	seekCost time.Duration
+	near     bool
+	measure  bool
+	// stateLag is how long the last state took to come from the host.
+	stateLag time.Duration
 	hostName string
 
 	// The dialog.
@@ -225,7 +248,9 @@ func (a *App) resetJam() {
 	j.images = map[string]string{}
 	j.by, j.wire = map[*library.Song]string{}, map[*library.Song]*jam.Song{}
 	j.members, j.requests, j.state, j.away, j.pubKey = nil, nil, nil, false, ""
-	j.catchUp = 0
+	j.catchUp, j.seekCost, j.near, j.measure, j.stateLag = 0, 0, false, false, 0
+	j.log, j.logID, j.actor, j.quiet, j.logged = nil, 0, "", 0, 0
+	j.selfPaused = false
 	j.share = newJamShare(a.clientNow(), a.serverID())
 }
 
@@ -575,6 +600,7 @@ func (a *App) jamPublish() {
 	key.WriteString(strings.Join([]string{
 		strconv.Itoa(p.index - lo), strconv.Itoa(p.added), strconv.Itoa(p.playNexts), boolText(playing), boolText(a.settings.Shuffle),
 		strconv.Itoa(a.settings.Repeat), boolText(!a.settings.JamLocked), strconv.Itoa(p.starts),
+		strconv.FormatInt(j.logID, 10),
 	}, ","))
 	expected := j.pubPos
 	if j.pubPlay {
@@ -591,6 +617,7 @@ func (a *App) jamPublish() {
 	out := jam.State{
 		Index: -1, Playing: playing, Position: st.Position.Milliseconds(), At: j.pubAt.UnixMilli(),
 		Shuffle: a.settings.Shuffle, Repeat: a.settings.Repeat, Control: !a.settings.JamLocked,
+		Log: j.log[max(0, len(j.log)-jamLogSent):],
 	}
 	if p.index >= 0 {
 		out.Index = p.index - lo
@@ -667,6 +694,9 @@ func (a *App) jamAsked(h *jam.Host, m jam.Member, ask jam.Ask) {
 		return
 	}
 	p := a.player
+	// What is done is told of as done by the guest who asked.
+	j.actor = m.Name
+	defer func() { j.actor = "" }()
 	at := func(n int) int {
 		if n >= len(ask.At) || n >= len(ask.Keys) {
 			return -1
@@ -693,11 +723,6 @@ func (a *App) jamAsked(h *jam.Host, m jam.Member, ask jam.Ask) {
 		} else {
 			p.enqueue(songs)
 		}
-		what := songs[0].Name
-		if len(songs) > 1 {
-			what = count(len(songs), "song", "songs")
-		}
-		toasts = append(toasts, ui.Toast{ID: "jam-added", Title: m.Name + " added " + what})
 	default:
 		if a.settings.JamLocked {
 			return
@@ -705,8 +730,7 @@ func (a *App) jamAsked(h *jam.Host, m jam.Member, ask jam.Ask) {
 		switch ask.Op {
 		case jam.OpPlay:
 			if i := at(0); i >= 0 {
-				p.failures = 0
-				p.playIndex(i)
+				p.jump(i)
 			}
 		case jam.OpRemove:
 			if i := at(0); i >= 0 {
@@ -802,17 +826,25 @@ func (a *App) jamMembers(h *jam.Host, ms []jam.Member) {
 	now := map[string]bool{}
 	for _, m := range ms {
 		now[m.ID] = true
-		if _, ok := was[m.ID]; !ok {
+		old, ok := was[m.ID]
+		switch {
+		case !ok:
 			if m.Peer != nil && m.Peer.Device != "" {
 				a.toast(m.Name + " joined your Jam from " + m.Peer.Device)
 			} else {
 				a.toast(m.Name + " joined your Jam")
 			}
+			a.jamNote(jam.Event{Who: m.Name, Op: jam.EvJoined})
+		case m.Away && !old.Away:
+			a.jamNote(jam.Event{Who: m.Name, Op: jam.EvAway})
+		case !m.Away && old.Away:
+			a.jamNote(jam.Event{Who: m.Name, Op: jam.EvBack})
 		}
 	}
 	for _, m := range j.members {
 		if !now[m.ID] {
 			a.toast(m.Name + " left your Jam")
+			a.jamNote(jam.Event{Who: m.Name, Op: jam.EvLeft})
 		}
 	}
 	j.members = ms
@@ -823,6 +855,8 @@ func (a *App) jamMembers(h *jam.Host, ms []jam.Member) {
 		servers[m.Server] = true
 	}
 	p := a.player
+	j.quiet++
+	defer func() { j.quiet-- }()
 	for i := len(p.queue) - 1; i > p.index; i-- {
 		if k, ok := j.keys[p.queue[i]]; ok {
 			if server, _ := jam.SplitKey(k); !servers[server] {
@@ -830,6 +864,69 @@ func (a *App) jamMembers(h *jam.Host, ms []jam.Member) {
 			}
 		}
 	}
+}
+
+// jamLogKept and jamLogSent are how much of the log the host keeps, and
+// sends.
+const (
+	jamLogKept = 200
+	jamLogSent = 40
+)
+
+// jamNote tells the Jam's log of something done here, as its host: by the
+// guest whose ask it is, else by the host. Nothing is told by a guest, nor
+// outside a Jam.
+func (a *App) jamNote(ev jam.Event) {
+	j := &a.jam
+	if j.host == nil || j.quiet > 0 {
+		return
+	}
+	if ev.Who == "" {
+		ev.Who = j.actor
+		if ev.Who == "" {
+			ev.Who, ev.Host = a.jamName(), true
+		}
+	}
+	ev.At = time.Now().UnixMilli()
+	if n := len(j.log); n > 0 {
+		last := &j.log[n-1]
+		// Moves of the same place in a row, as a slider dragged, are one.
+		if ev.Op == jam.OpSeek && last.Op == jam.OpSeek && last.Who == ev.Who && ev.At-last.At < 3000 {
+			last.Position, last.At = ev.Position, ev.At
+			j.logID++
+			last.ID = j.logID
+			return
+		}
+	}
+	j.logID++
+	ev.ID = j.logID
+	j.log = append(j.log, ev)
+	if len(j.log) > jamLogKept {
+		j.log = slices.Clone(j.log[len(j.log)-jamLogKept:])
+	}
+	if !ev.Host && jamToasted(ev.Op) {
+		// What a guest did to what plays, the host hears of.
+		a.jamToast(ev)
+	}
+}
+
+// jamToast tells of something someone else did in the Jam: the latest
+// in place of the one before.
+func (a *App) jamToast(ev jam.Event) {
+	toasts = append(toasts, ui.Toast{ID: "jam-event", Title: jamEventText(ev)})
+	if a.win != nil {
+		a.win.Invalidate()
+	}
+}
+
+// jamToasted reports whether an event is told of by a toast as well:
+// what changes what everyone hears.
+func jamToasted(op string) bool {
+	switch op {
+	case jam.OpPause, jam.OpResume, jam.OpSkip, jam.OpPrevious, jam.OpSeek, jam.OpPlay, jam.OpAdd, jam.OpNext, jam.EvStart, jam.OpClear:
+		return true
+	}
+	return false
 }
 
 // jamTakeState applies the latest state the host sent.
@@ -845,6 +942,20 @@ func (a *App) jamTakeState() {
 	sess.mu.Unlock()
 	if st == nil {
 		return
+	}
+	j.stateLag = j.guest.HostNow().Sub(time.UnixMilli(st.At))
+	// What others did to what plays, told of as it comes; not what was
+	// done before this guest came.
+	if n := len(st.Log); n > 0 {
+		if j.logged > 0 {
+			me := a.jamName()
+			for _, ev := range st.Log {
+				if ev.ID > j.logged && ev.Who != me && jamToasted(ev.Op) {
+					a.jamToast(ev)
+				}
+			}
+		}
+		j.logged = max(j.logged, st.Log[n-1].ID)
 	}
 	p := a.player
 	old := p.current()
@@ -947,9 +1058,9 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 	}
 	if oldKey != a.songKey(want) {
 		p.index = st.Index
-		if st.Playing {
+		if st.Playing && !j.selfPaused {
 			p.playFrom(st.Index, pos+lead)
-			j.settled = time.Now()
+			j.settled, j.near, j.measure = time.Now(), false, true
 		} else {
 			// The host's song, paused where it is: it loads when it plays.
 			p.reportStop()
@@ -968,6 +1079,26 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 	if off < 0 {
 		off = -off
 	}
+	// seek moves to where the host is heard, allowing for how late a move
+	// lands: one within what is loaded is heard at once, one beyond it
+	// once that has come from where the song comes from.
+	seek := func(playing bool) {
+		loadedTo := time.Duration(local.Loaded * float64(local.Duration))
+		near := local.Loaded >= 1 || pos+3*time.Second < loadedTo
+		to := pos
+		if playing {
+			// What the device holds is heard after: a paused one starts
+			// from nothing, and holds none.
+			to += p.engine.Lag()
+		}
+		if near {
+			to += j.seekCost
+		} else {
+			to += j.catchUp
+		}
+		p.engine.SeekTo(to)
+		j.settled, j.near, j.measure = time.Now(), near, true
+	}
 	switch {
 	case !st.Playing:
 		if !p.paused && !p.finished {
@@ -977,42 +1108,63 @@ func (a *App) jamFollow(old *library.Song, fresh bool) {
 			}
 			p.reportProgress(true)
 		}
-		if off > 1500*time.Millisecond && p.engine != nil && !p.finished {
+		// Paused where the host is, to the moment, though the pause came
+		// late: both go on from the same place.
+		if off > 40*time.Millisecond && p.engine != nil && !p.finished {
 			p.engine.SeekTo(pos)
 		}
+	case j.selfPaused:
+		// Paused here alone: the Jam goes on without this guest until it
+		// catches up.
 	case p.finished:
 		// It ended here first: it plays again where the host is.
 		p.playFrom(st.Index, pos+lead)
-		j.settled = time.Now()
+		j.settled, j.near, j.measure = time.Now(), false, true
 	case p.paused:
+		// Moved on first by as long as the host has played since, then
+		// on: heard where the host is, not that much behind.
 		p.paused = false
 		if p.engine != nil {
-			p.engine.Resume()
-			if off > 1500*time.Millisecond {
-				p.engine.SeekTo(pos + lead)
-				j.settled = time.Now()
+			if off > 40*time.Millisecond {
+				seek(false)
+				// The sound starting again takes a moment of its own:
+				// what is learned is of moves while it plays.
+				j.measure = false
 			}
+			p.engine.Resume()
 		}
 		p.reportProgress(true)
-	case off > jamDrift && (time.Since(j.settled) > 3*time.Second || fresh && off > 2*time.Second) && !local.Buffering && p.engine != nil:
-		// Out of step: back in. Soon after the last time, how far off it
-		// is says how late it was heard, which the next time allows for;
-		// not when the host has jumped.
-		jumped := fresh && off > 2*time.Second
-		if !jumped && time.Since(j.settled) < 20*time.Second && off < 8*time.Second {
-			j.catchUp = min(max(j.catchUp-drift, 0), 8*time.Second)
-			lead = j.catchUp + p.engine.Lag()
+	case p.engine == nil || local.Buffering:
+	case fresh && off > 2*time.Second:
+		// The host jumped: there at once.
+		seek(true)
+	case time.Since(j.settled) < 2*time.Second:
+		// Let be: it has just been moved.
+	default:
+		// How far off it is a while after a move says how late the move
+		// was heard, which the next allows for.
+		if j.measure {
+			j.measure = false
+			if time.Since(j.settled) < 20*time.Second && off < 8*time.Second {
+				if j.near {
+					j.seekCost = min(max(j.seekCost-drift, 0), 300*time.Millisecond)
+				} else {
+					j.catchUp = min(max(j.catchUp-drift, 0), 8*time.Second)
+				}
+			}
 		}
-		p.engine.SeekTo(pos + lead)
-		j.settled = time.Now()
+		if off > jamDrift && time.Since(j.settled) > 3*time.Second {
+			// Out of step: back in.
+			seek(true)
+		}
 	}
 	a.jamArm()
 }
 
 // jamDrift is how far a guest may be from the host before it is moved
-// back in step: less than is heard as an echo between two rooms, more
-// than the jitter of where each says it is.
-const jamDrift = 300 * time.Millisecond
+// back in step: well under what is heard as late, more than the jitter
+// of where each says it is and of the clocks.
+const jamDrift = 80 * time.Millisecond
 
 // jamArm has the engine ready the song after, which the queue's change
 // may have moved.
@@ -1160,19 +1312,24 @@ func (a *App) jamOpener(s *library.Song) func() (*audio.File, error) {
 		return nil
 	}
 	var u string
+	var ahead time.Duration
 	switch {
 	case a.jam.guest != nil:
 		u = a.jam.guest.MediaURL(key)
+		// From the host, over what may be a slow link: kept only so far
+		// ahead of where it plays, for what the host says to come through
+		// at once.
+		ahead = 30 * time.Second
 	case a.jam.host != nil:
 		u = a.jam.host.PullURL(key)
 	default:
 		return func() (*audio.File, error) { return nil, errors.New("the Jam it was of has ended") }
 	}
-	cache := a.player.cache
+	cache, dur := a.player.cache, s.Duration()
 	return func() (*audio.File, error) {
-		return cache.Open("jam-"+key, func(ctx context.Context) (*http.Request, error) {
+		return cache.OpenPaced("jam-"+key, func(ctx context.Context) (*http.Request, error) {
 			return http.NewRequestWithContext(ctx, "GET", u, nil)
-		})
+		}, ahead, dur)
 	}
 }
 
@@ -1280,5 +1437,175 @@ func (a *App) stopLooking() {
 	if j.looking != nil {
 		j.looking()
 		j.looking = nil
+	}
+}
+
+// jamEventWords is what an event says, after who did it: "added", the
+// song it is of, "Dawn", and what follows it, " and 2 more".
+func jamEventWords(ev jam.Event) (verb, song, more string) {
+	song = ev.Song
+	if ev.N > 1 && song != "" {
+		more = " and " + strconv.Itoa(ev.N-1) + " more"
+	}
+	switch ev.Op {
+	case jam.OpPause:
+		return "paused", "", ""
+	case jam.OpResume:
+		return "played on", "", ""
+	case jam.OpSkip:
+		if song == "" {
+			return "skipped", "", ""
+		}
+		return "skipped to", song, ""
+	case jam.OpPrevious:
+		if song == "" {
+			return "went back to the start", "", ""
+		}
+		return "went back to", song, ""
+	case jam.OpSeek:
+		at := "moved to " + clock(time.Duration(ev.Position)*time.Millisecond)
+		if song == "" {
+			return at, "", ""
+		}
+		return at + " in", song, ""
+	case jam.OpPlay, jam.EvStart:
+		return "played", song, more
+	case jam.OpAdd:
+		return "added", song, more
+	case jam.OpNext:
+		return "put next", song, more
+	case jam.OpRemove:
+		return "removed", song, ""
+	case jam.OpMove:
+		return "moved", song, more
+	case jam.OpClear:
+		return "cleared what plays next", "", ""
+	case jam.OpShuffle:
+		if ev.On {
+			return "turned shuffle on", "", ""
+		}
+		return "turned shuffle off", "", ""
+	case jam.OpRepeat:
+		switch ev.Mode {
+		case repeatOne:
+			return "repeats this song", "", ""
+		case repeatAll:
+			return "repeats the queue", "", ""
+		}
+		return "turned repeat off", "", ""
+	case jam.EvJoined:
+		return "joined", "", ""
+	case jam.EvLeft:
+		return "left", "", ""
+	case jam.EvAway:
+		return "lost the connection", "", ""
+	case jam.EvBack:
+		return "is back", "", ""
+	}
+	return ev.Op, song, more
+}
+
+// jamEventText is an event in a sentence: "Sam paused", "Sam added
+// “Dawn”".
+func jamEventText(ev jam.Event) string {
+	verb, song, more := jamEventWords(ev)
+	t := ev.Who + " " + verb
+	if song != "" {
+		t += " “" + song + "”"
+	}
+	return t + more
+}
+
+// toggleHere pauses or plays on as the system's controls ask: the
+// keyboard's media keys, headphones taken off, the system's media
+// controls and the sleep timer. A Jam's guest pauses alone, and the Jam
+// goes on for everyone else; played on, it catches up. Outside a Jam, or
+// as its host, it is toggle.
+func (p *player) toggleHere() {
+	a := p.app
+	j := &a.jam
+	if !a.jamGuest() || j.state == nil {
+		p.toggle()
+		return
+	}
+	switch {
+	case j.selfPaused:
+		a.jamCatchUp()
+	case j.state.Playing:
+		a.jamPauseHere()
+	default:
+		// The Jam is paused: playing on is asked of the host.
+		p.toggle()
+	}
+}
+
+// pauseHere pauses as the system asks, as toggleHere does, but only
+// pauses.
+func (p *player) pauseHere() {
+	a := p.app
+	if a.jamGuest() && a.jam.state != nil {
+		if a.jam.state.Playing && !a.jam.selfPaused {
+			a.jamPauseHere()
+		}
+		return
+	}
+	if p.playing() {
+		p.toggle()
+	}
+}
+
+// playHere plays on as the system asks, as toggleHere does, but only
+// plays.
+func (p *player) playHere() {
+	a := p.app
+	if a.jamGuest() && a.jam.selfPaused {
+		a.jamCatchUp()
+		return
+	}
+	if !p.playing() {
+		p.toggle()
+	}
+}
+
+// jamPauseHere pauses a guest alone: the Jam goes on for everyone else.
+func (a *App) jamPauseHere() {
+	j, p := &a.jam, a.player
+	j.selfPaused, j.selfPausedAt = true, time.Now()
+	if !p.paused {
+		p.paused = true
+		if p.engine != nil {
+			p.engine.Pause()
+		}
+		p.reportProgress(true)
+	}
+	toasts = append(toasts, ui.Toast{ID: "jam-self", Title: "Paused here only", Description: "The Jam goes on for everyone else. Play to catch up."})
+	if a.win != nil {
+		a.win.Invalidate()
+	}
+}
+
+// jamCatchUp has a guest paused alone play on, where the host is.
+func (a *App) jamCatchUp() {
+	j := &a.jam
+	if !j.selfPaused {
+		return
+	}
+	j.selfPaused = false
+	a.jamFollow(a.player.current(), true)
+}
+
+// jamSlept is told as the computer goes to sleep, and wakes: a guest the
+// system paused as it went to sleep catches up as it wakes.
+func (a *App) jamSlept(sleeping bool) {
+	j := &a.jam
+	if sleeping {
+		j.sleptAt = time.Now()
+		return
+	}
+	if j.guest == nil || !j.selfPaused || j.sleptAt.IsZero() {
+		return
+	}
+	if d := j.selfPausedAt.Sub(j.sleptAt); d > -30*time.Second && d < 30*time.Second {
+		a.jamCatchUp()
 	}
 }

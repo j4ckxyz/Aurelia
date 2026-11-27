@@ -223,6 +223,7 @@ func (p *player) play(songs []*library.Song, start int) {
 	p.queue = slices.Clone(songs)
 	p.failures = 0
 	p.playIndex(start)
+	p.app.jamNote(jam.Event{Op: jam.EvStart, Song: songs[start].Name, N: len(songs) - start})
 }
 
 // playWithSimilar plays a song on its own, then songs the server finds
@@ -338,6 +339,7 @@ func (p *player) jump(i int) {
 	}
 	p.failures = 0
 	p.playIndex(i)
+	p.app.jamNote(jam.Event{Op: jam.OpPlay, Song: p.nameAt(p.index)})
 }
 
 // repeat is the repeat mode: the settings', or the Jam's host's.
@@ -514,6 +516,11 @@ func (p *player) toggle() {
 		return
 	}
 	if st := p.app.jam.state; p.app.jamGuest() && st != nil {
+		if p.app.jam.selfPaused {
+			// Paused here alone: it catches up.
+			p.app.jamCatchUp()
+			return
+		}
 		op := jam.OpResume
 		if st.Playing {
 			op = jam.OpPause
@@ -546,6 +553,7 @@ func (p *player) toggle() {
 			next = 0
 		}
 		p.playIndex(next)
+		p.app.jamNote(jam.Event{Op: jam.OpResume})
 		return
 	}
 	if p.cold {
@@ -562,6 +570,7 @@ func (p *player) toggle() {
 		p.engine.Play(p.track, p.resumeAt)
 		p.reportStart()
 		p.armNext()
+		p.app.jamNote(jam.Event{Op: jam.OpResume})
 		return
 	}
 	p.paused = !p.paused
@@ -573,6 +582,11 @@ func (p *player) toggle() {
 		}
 	}
 	p.reportProgress(true)
+	if p.paused {
+		p.app.jamNote(jam.Event{Op: jam.OpPause})
+	} else {
+		p.app.jamNote(jam.Event{Op: jam.OpResume})
+	}
 }
 
 // skip goes to the next song.
@@ -595,7 +609,10 @@ func (p *player) skip() {
 	case p.app.settings.Repeat != repeatOff && len(p.queue) > 0:
 		p.failures = 0
 		p.playIndex(0)
+	default:
+		return
 	}
+	p.app.jamNote(jam.Event{Op: jam.OpSkip, Song: p.nameAt(p.index)})
 }
 
 // previous goes to the start of the song, or to the song before it when
@@ -614,11 +631,15 @@ func (p *player) previous() {
 	}
 	if p.state().Position > 3*time.Second || p.index == 0 {
 		p.starts++ // played again, which a seek is not
+		p.app.jam.quiet++
 		p.seek(0)
+		p.app.jam.quiet--
+		p.app.jamNote(jam.Event{Op: jam.OpPrevious})
 		return
 	}
 	p.failures = 0
 	p.playIndex(p.index - 1)
+	p.app.jamNote(jam.Event{Op: jam.OpPrevious, Song: p.nameAt(p.index)})
 }
 
 func (p *player) seek(to time.Duration) {
@@ -640,6 +661,7 @@ func (p *player) seek(to time.Duration) {
 		}
 		return
 	}
+	p.app.jamNote(jam.Event{Op: jam.OpSeek, Position: to.Milliseconds(), Song: p.nameAt(p.index)})
 	if p.cold {
 		p.resumeAt = to
 		return
@@ -670,6 +692,7 @@ func (p *player) setShuffle(on bool) {
 		p.app.askJam(jam.Ask{Op: jam.OpShuffle, On: on})
 		return
 	}
+	p.app.jamNote(jam.Event{Op: jam.OpShuffle, On: on})
 	was := p.app.settings.Shuffle
 	p.app.settings.Shuffle = on
 	p.app.saveSettings()
@@ -717,6 +740,7 @@ func (p *player) setRepeat(mode int) {
 		p.app.askJam(jam.Ask{Op: jam.OpRepeat, Mode: mode})
 		return
 	}
+	p.app.jamNote(jam.Event{Op: jam.OpRepeat, Mode: mode})
 	p.app.settings.Repeat = mode
 	p.app.saveSettings()
 	if f := p.far; f != nil {
@@ -743,6 +767,7 @@ func (p *player) playNext(songs []*library.Song) {
 		p.added += len(songs)
 		p.playNexts += len(songs)
 		p.insert(at, songs)
+		p.app.jamNote(jam.Event{Op: jam.OpNext, Song: songs[0].Name, N: len(songs)})
 	}
 }
 
@@ -757,6 +782,7 @@ func (p *player) enqueue(songs []*library.Song) {
 		_, hi := p.addedRun()
 		p.added += len(songs)
 		p.insert(hi, songs)
+		p.app.jamNote(jam.Event{Op: jam.OpAdd, Song: songs[0].Name, N: len(songs)})
 	}
 }
 
@@ -825,6 +851,7 @@ func (p *player) remove(i int) {
 		p.app.askJam(jam.Ask{Op: jam.OpRemove, At: []int{i}})
 		return
 	}
+	p.app.jamNote(jam.Event{Op: jam.OpRemove, Song: p.queue[i].Name})
 	if lo, hi := p.addedRun(); i >= lo && i < hi {
 		p.added--
 		if i < lo+p.playNexts {
@@ -881,6 +908,9 @@ func (p *player) move(from []int, to int) {
 	if p.app.jamGuest() {
 		p.app.askJam(jam.Ask{Op: jam.OpMove, At: from, To: to})
 		return
+	}
+	if len(from) > 0 {
+		p.app.jamNote(jam.Event{Op: jam.OpMove, Song: p.nameAt(from[0]), N: len(from)})
 	}
 	cur := p.current()
 	lo, hi := p.addedRun()
@@ -983,6 +1013,7 @@ func (p *player) clearUpcoming() {
 		p.app.askJam(jam.Ask{Op: jam.OpClear})
 		return
 	}
+	p.app.jamNote(jam.Event{Op: jam.OpClear})
 	_, hi := p.addedRun()
 	for _, s := range p.queue[hi:] {
 		p.unshuffled = dropOne(p.unshuffled, s)
@@ -1096,4 +1127,12 @@ func followsOnAlbum(cur, next *library.Song) bool {
 		return false
 	}
 	return next.Disc == cur.Disc && next.Track == cur.Track+1 || next.Disc == cur.Disc+1 && next.Track == 1
+}
+
+// nameAt is the name of the song at i of the queue, "" for none.
+func (p *player) nameAt(i int) string {
+	if i < 0 || i >= len(p.queue) {
+		return ""
+	}
+	return p.queue[i].Name
 }

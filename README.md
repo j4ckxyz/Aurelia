@@ -234,6 +234,18 @@ Beta; the player's bar then has a Jam button.
   joins the Jam's queue, marked with who added it. The host chooses
   whether guests also play, pause, skip, seek and change the order, or
   only add songs.
+- **Who did what.** The Jam's dialog keeps the Jam's activity, the latest
+  first: who paused or played on, skipped, moved in a song, added,
+  removed or moved songs, and who joined, left or lost the connection.
+  What someone else does to what plays shows as a notification too.
+- **Your own pause.** A pause from outside Aurelia's window, as the
+  keyboard's media keys, headphones taken off, the system's media
+  controls or the computer going to sleep, pauses only you: the Jam goes
+  on for everyone else, and **Catch up** (or play) takes you back to
+  where the host is. A computer paused as it went to sleep catches up by
+  itself as it wakes. On Linux, Aurelia asks the desktop not to suspend
+  the computer while music plays, as macOS and Windows do of themselves;
+  closing the lid still puts it to sleep.
 - **In step, with your own sound.** Each computer plays the music itself,
   within a fraction of a second of the host: on its own speakers or
   headphones, at its own volume, through its own equalizer, spatial

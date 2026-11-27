@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"image"
+	"image/png"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -478,4 +482,58 @@ func TestTailnetDoorAddresses(t *testing.T) {
 	a.goTo("/settings")
 	tt.Frame()
 	wantTexts(t, tt, "Let devices on my tailnet invite me to Jams")
+}
+
+// In a window too low for the Jam's dialog, as with many people or
+// devices, what is under its title scrolls: nothing falls out of it.
+func TestJamDialogScrolls(t *testing.T) {
+	host, guest, _, _ := tailPair(t)
+	readTail(t, []*App{host, guest}, host)
+	host.startJam()
+	host.openJam()
+	// In a window high enough, all of it shows, as it did.
+	tall := ui.NewTester(host.view, 1240, 900)
+	tall.Frame()
+	if end, ok := tall.Find("End Jam"); !ok || end.Y+end.H > 900 || end.H == 0 {
+		t.Errorf("in a high window, End Jam is at %+v", end)
+	}
+	if dir := os.Getenv("AURELIA_SHOTS"); dir != "" {
+		savePNG(t, filepath.Join(dir, "jam-tall.png"), tall.Image())
+	}
+	const h = 480
+	tt := ui.NewTester(host.view, 1240, h)
+	tt.Frame()
+	title, ok := tt.Find("Your Jam")
+	if !ok || title.Y < 0 {
+		t.Fatalf("the title is at %+v", title)
+	}
+	if dir := os.Getenv("AURELIA_SHOTS"); dir != "" {
+		savePNG(t, filepath.Join(dir, "jam-low-top.png"), tt.Image())
+	}
+	for range 10 {
+		tt.Scroll(620, h/2, 0, 400)
+		tt.Frame()
+	}
+	end, ok := tt.Find("End Jam")
+	if !ok || end.Y+end.H > h || end.Y < 0 {
+		t.Errorf("End Jam is at %+v, in a window %d high", end, h)
+	}
+	if title2, _ := tt.Find("Your Jam"); title2 != title {
+		t.Errorf("the title moved from %+v to %+v", title, title2)
+	}
+	if dir := os.Getenv("AURELIA_SHOTS"); dir != "" {
+		savePNG(t, filepath.Join(dir, "jam-low-end.png"), tt.Image())
+	}
+}
+
+func savePNG(t *testing.T, path string, img image.Image) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
 }

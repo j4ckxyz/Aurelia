@@ -132,6 +132,24 @@ real Tailscale (1.104.5): what was seen there is ticked.
       by the time it took to load, and only 2.5 s was corrected. Guests
       now learn that time and move back in step past 300 ms: within
       ±30 ms over the relay, and through a relay of 900 ms each way.
+- [x] Pause and play in step (asked 2026-11-27): a guest paused late,
+      as the word came, and stayed off. Measured through a relay of one
+      queue for every connection (`slowlink`, as Tailscale's DERP is):
+      guests pause at the host's very place and play on within ~5 ms of
+      it; a link 2.4 times the song's bit rate, cold, is in step after
+      ~15 s and then within ±50 ms, the host's word taking the link's
+      latency (0.15 s) and not 2.3 s, now that songs come only 30 s ahead.
+- [ ] A guest's laptop going to sleep paused the Jam for everyone
+      (asked 2026-11-27): Linux desktops pause players through MPRIS as
+      the computer sleeps, which a guest asked of the host. Pauses from
+      outside the window now pause the guest alone, and one as it slept
+      catches up as it wakes (tests); on Linux the desktop's portal is
+      asked not to suspend while music plays. Not tried: a real sleep, and
+      the portal on a desktop (this computer has no desktop session; the
+      call is given up after 10 s).
+- [x] The Jam's activity, who did what (asked 2026-11-27): in the
+      dialog, the latest first, and toasts of what others did to what
+      plays; tested, and seen in the dialog (headless frames).
 - [ ] Two real devices still: Invite to a device whose Jams are off and
       "Turn on and join", Join from the list, Copy invite link for a
       device with Aurelia closed, someone else's device asking as who

@@ -76,15 +76,27 @@ type entry struct {
 	size int64    // of the whole file, -1 until known
 	done bool
 	err  error
+	// A paced download keeps only so far ahead of what is read: ahead of
+	// a song of dur, as far as reach, the furthest a read has asked for.
+	ahead, dur time.Duration
+	reach      int64
 
-	refs   int // under c.mu
-	cancel context.CancelFunc
+	refs    int  // under c.mu
+	dropped bool // under c.mu
+	cancel  context.CancelFunc
 }
 
 // Open returns the file of key, starting its download with the request
 // that newRequest makes unless the cache has it. It never blocks on the
 // network: reads do.
 func (c *Cache) Open(key string, newRequest func(ctx context.Context) (*http.Request, error)) (*File, error) {
+	return c.OpenPaced(key, newRequest, 0, 0)
+}
+
+// OpenPaced is Open, but for a download that keeps only ahead of the
+// song, of dur, ahead of where it is read: over a slow link, a song
+// taken whole as fast as it comes holds up all else on it.
+func (c *Cache) OpenPaced(key string, newRequest func(ctx context.Context) (*http.Request, error), ahead, dur time.Duration) (*File, error) {
 	if c == nil {
 		return nil, errors.New("audio: there is nowhere to keep songs")
 	}
@@ -95,7 +107,7 @@ func (c *Cache) Open(key string, newRequest func(ctx context.Context) (*http.Req
 		e.refs++
 		return &File{e: e}, nil
 	}
-	e := &entry{c: c, key: key, path: filepath.Join(c.dir, key+".audio"), size: -1, refs: 1}
+	e := &entry{c: c, key: key, path: filepath.Join(c.dir, key+".audio"), size: -1, refs: 1, ahead: ahead, dur: dur}
 	e.cond = sync.NewCond(&e.mu)
 	if f, err := os.Open(e.path); err == nil {
 		if st, err := f.Stat(); err == nil && st.Size() > 0 {
@@ -192,6 +204,16 @@ func (e *entry) fetch(ctx context.Context, w *os.File, newRequest func(context.C
 		e.cond.Broadcast()
 		e.mu.Unlock()
 	}
+	pace := e.pace()
+	if pace > 0 {
+		// Waits for reads end as the download is let go.
+		stop := context.AfterFunc(ctx, func() {
+			e.mu.Lock()
+			e.cond.Broadcast()
+			e.mu.Unlock()
+		})
+		defer stop()
+	}
 	buf := make([]byte, 64<<10)
 	for {
 		n, err := resp.Body.Read(buf)
@@ -202,6 +224,9 @@ func (e *entry) fetch(ctx context.Context, w *os.File, newRequest func(context.C
 			e.mu.Lock()
 			e.n += int64(n)
 			e.cond.Broadcast()
+			for pace > 0 && e.n-e.reach > pace && ctx.Err() == nil {
+				e.cond.Wait()
+			}
 			e.mu.Unlock()
 		}
 		if err == io.EOF {
@@ -220,7 +245,24 @@ func (e *entry) fetch(ctx context.Context, w *os.File, newRequest func(context.C
 	return nil
 }
 
-// release drops a reference; a download nobody reads any more stops.
+// pace is how many bytes a paced download keeps ahead of what is read,
+// 0 for one that is not.
+func (e *entry) pace() int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ahead <= 0 {
+		return 0
+	}
+	const least = 256 << 10
+	if e.size <= 0 || e.dur <= 0 {
+		return 4 << 20
+	}
+	return max(least, int64(float64(e.size)*e.ahead.Seconds()/e.dur.Seconds()))
+}
+
+// release drops a reference. A download nobody reads any more stops, a
+// while after: a song closed to be opened again at once, as one played
+// again from another place, goes on downloading where it was.
 func (e *entry) release() {
 	c := e.c
 	c.mu.Lock()
@@ -229,7 +271,59 @@ func (e *entry) release() {
 		c.mu.Unlock()
 		return
 	}
-	delete(c.entries, e.key)
+	e.mu.Lock()
+	whole := e.done
+	e.mu.Unlock()
+	if !whole && keepUnread > 0 {
+		c.mu.Unlock()
+		time.AfterFunc(keepUnread, func() {
+			c.mu.Lock()
+			if e.refs > 0 {
+				c.mu.Unlock()
+				return
+			}
+			e.drop()
+		})
+		return
+	}
+	e.drop()
+}
+
+// dropIdle lets go at once of the downloads nobody reads, which go on
+// a while otherwise: as the cache is done with.
+func (c *Cache) dropIdle() {
+	for {
+		c.mu.Lock()
+		var idle *entry
+		for _, e := range c.entries {
+			if e.refs == 0 {
+				idle = e
+				break
+			}
+		}
+		if idle == nil {
+			c.mu.Unlock()
+			return
+		}
+		idle.drop()
+	}
+}
+
+// keepUnread is how long a download goes on unread.
+var keepUnread = 20 * time.Second
+
+// drop lets an entry nobody reads go: its download stops, its file
+// closes. The caller holds c.mu, which drop unlocks.
+func (e *entry) drop() {
+	c := e.c
+	if e.dropped {
+		c.mu.Unlock()
+		return
+	}
+	e.dropped = true
+	if c.entries[e.key] == e {
+		delete(c.entries, e.key)
+	}
 	c.mu.Unlock()
 	if e.cancel != nil {
 		e.cancel() // download removes the part file if it was not whole
@@ -368,6 +462,11 @@ func (f *File) Read(p []byte) (int, error) {
 	e := f.e
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if r := f.off + int64(len(p)); r > e.reach {
+		// A paced download goes on as far ahead of this.
+		e.reach = r
+		e.cond.Broadcast()
+	}
 	for f.off >= e.n && !e.done && !f.aborted {
 		e.cond.Wait()
 	}

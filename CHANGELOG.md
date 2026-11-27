@@ -1,5 +1,33 @@
 # Changes
 
+## 0.8.2
+
+- Jams: pausing pauses guests at the very place the host did, and
+  playing again starts them where the host is, not as late as the word
+  of it took to reach them. Guests keep within a tenth of a second of
+  the host, not a third, and the host tells of a change within a tenth
+  of a second.
+- Jams over slow links, as Tailscale's relays: a guest downloads the
+  host's songs only half a minute ahead of where it plays, so the
+  host's word of a pause or a skip no longer waits behind a whole song
+  coming down the same link. Its clock is set from more of the host's
+  answers, the quickest of a minute of them.
+- A song that was downloading, played again from another place or
+  skipped to, goes on downloading where it was instead of starting over.
+- The Jam's dialog scrolls under its title in a window too low for all
+  of it, as with many people or devices, instead of running out of the
+  window.
+- Jams: the Jam's dialog shows who did what, the latest first: who
+  paused or played on, skipped, moved in a song, added, removed or moved
+  songs, and who joined, left or lost the connection. What someone else
+  does to what plays shows as a notification too.
+- Jams: a guest's pause from outside Aurelia (the keyboard's media keys,
+  headphones taken off, the system's media controls, the computer going
+  to sleep) pauses only that guest, not the Jam; play or Catch up takes
+  it back to where the host is, and a computer paused as it went to
+  sleep catches up as it wakes. On Linux, Aurelia keeps the computer
+  from suspending on its own while music plays.
+
 ## 0.8.1
 
 - Jams: guests stay in step with the host over slow links, as over
